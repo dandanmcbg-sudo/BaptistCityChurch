@@ -37,6 +37,16 @@ body:not(.admin-authorized) .shell{filter:blur(3px);pointer-events:none;user-sel
 .auth-card input{width:100%;margin:6px 0;padding:12px;border:1px solid #e7ddd0;border-radius:10px}
 .auth-card button{width:100%;margin-top:10px;padding:12px;border:0;border-radius:10px;background:#171717;color:white;font-weight:700;cursor:pointer}
 #adminLoginMsg{margin-top:12px;font-size:.8rem;color:#71675d}
+.password-wrap{position:relative}
+.password-wrap input{padding-right:70px}
+.auth-card .password-wrap button{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:auto;margin:0;padding:8px 10px;background:#eee8df;color:#171717;font-size:.8rem}
+.nav-signout{display:block;width:100%;text-align:left;margin-top:18px;padding:11px 12px;background:transparent;border:1px solid #59534d;border-radius:10px;color:#fff;cursor:pointer}
+.nav-signout:hover{background:#2b2926}
+.nav-signout[hidden]{display:none!important}
+html{scroll-behavior:smooth;scroll-padding-top:20px}
+nav a:focus-visible,.nav-signout:focus-visible,.auth-card button:focus-visible{outline:2px solid #d6ad75;outline-offset:3px}
+@media(max-width:900px){nav{flex-wrap:wrap;gap:4px}nav a{white-space:nowrap}.nav-signout{width:auto;margin-top:5px}}
+@media(max-width:560px){aside{padding:15px}nav a{font-size:.82rem;padding:10px}main{padding:12px}.panel{padding:14px}.panel-head{flex-wrap:wrap}.controls{width:100%}.controls input{max-width:100%}}
 </style>
 
 </head>
@@ -45,17 +55,18 @@ body:not(.admin-authorized) .shell{filter:blur(3px);pointer-events:none;user-sel
 <aside>
  <div class="brand"><img src="assets/bcc-logo.png"><div><b>Baptist City Church</b><span>Attendance Admin</span></div></div>
  <nav>
-  <a class="active" href="admin.html">Dashboard</a>
-  <a href="#records">Attendance Records</a>
-  <a href="#backup">Backup & Data</a>
+  <a class="active" href="#dashboard" data-admin-nav="dashboard">Dashboard</a>
+  <a href="#records" data-admin-nav="records">Attendance Records</a>
+  <a href="#backup" data-admin-nav="backup">Backup & Data</a>
   <a href="invitation.html">Invitation Center</a>
   <a href="index.html">Public Check-in Page</a>
+  <button type="button" id="adminSignOutBtn" class="nav-signout" hidden>Sign Out</button>
  </nav>
  <div class="side-bottom">Offline-first • Data is stored on this device</div>
 </aside>
 <main>
  <div class="top"><div><h1>Admin Dashboard</h1><p>Manage Baptist City Church attendance records.</p></div><button class="btn" onclick="openAdd()">+ Add Person</button></div>
- <section class="stats">
+ <section class="stats" id="dashboard">
   <div class="stat"><div class="label">Total People</div><div class="value" id="people">0</div></div>
   <div class="stat"><div class="label">Members</div><div class="value" id="members">0</div></div>
   <div class="stat"><div class="label">Visitors & Guests</div><div class="value" id="visitors">0</div></div>
@@ -114,6 +125,21 @@ function clearAll(){if(confirm('Clear ALL attendance records?')&&confirm('Final 
 function exportCSV(){if(!db.length)return alert('No records to export.');let csv='Full Name,Category,Contact Number,Total Attendance,Last Attended,Notes\n'+db.map(x=>[x.name,x.category,x.contact||'',x.totalAttendance||0,x.lastAttended||'',x.notes||''].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='BCC_Attendance_Backup_'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(a.href)}
 function importCSV(e){let file=e.target.files[0];if(!file)return;let r=new FileReader();r.onload=()=>{let lines=r.result.split(/\r?\n/).slice(1).filter(Boolean);for(let line of lines){let c=line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g)||[];c=c.map(v=>v.replace(/^"|"$/g,'').replace(/""/g,'"'));if(!c[0])continue;let old=db.find(x=>x.name.toLowerCase()===c[0].toLowerCase());let obj={id:old?.id||('id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),name:c[0],category:c[1]||'Member',contact:c[2]||'',totalAttendance:Number(c[3])||0,lastAttended:c[4]||'',notes:c[5]||''};if(old)Object.assign(old,obj);else db.push(obj)}save();alert('Import complete.');e.target.value=''};r.readAsText(file)}
 render();
+(function initAdminNavigation(){
+  const links=[...document.querySelectorAll("[data-admin-nav]")];
+  const sections=["dashboard","records","backup"];
+  function activate(){
+    const current=sections.includes(location.hash.slice(1))?location.hash.slice(1):"dashboard";
+    links.forEach(link=>{
+      const active=link.dataset.adminNav===current;
+      link.classList.toggle("active",active);
+      if(active)link.setAttribute("aria-current","location");
+      else link.removeAttribute("aria-current");
+    });
+  }
+  window.addEventListener("hashchange",activate);
+  activate();
+})();
 </script>
 
 <script type="module">
@@ -151,6 +177,7 @@ const AUTH_ERRORS = {
   "auth/unauthorized-domain": "This website domain must be added under Firebase Authentication → Settings → Authorized domains.",
   "auth/api-key-not-valid.-please-pass-a-valid-api-key.": "Firebase configuration is invalid."
 };
+let auth = null; // Shared with the login submit handler and auth-state listener.
 const cfg = window.BCC_FIREBASE_CONFIG || {};
 const configured = cfg.apiKey && !String(cfg.apiKey).includes("PASTE_");
 
@@ -166,12 +193,24 @@ function showGate(message="Admin sign in required.") {
         <p>Admin Dashboard Sign In</p>
         <form id="adminLoginForm">
           <input id="adminEmail" type="email" placeholder="Admin email" autocomplete="username" required>
-          <input id="adminPassword" type="password" placeholder="Password" autocomplete="current-password" required>
+          <div class="password-wrap">
+            <input id="adminPassword" type="password" placeholder="Password" autocomplete="current-password" required>
+            <button type="button" id="toggleAdminPassword" aria-label="Show password" aria-pressed="false">Show</button>
+          </div>
           <button id="adminLoginBtn" type="submit">Sign In</button>
         </form>
         <div id="adminLoginMsg" role="alert" aria-live="polite">${message}</div>
       </div>`;
     document.body.appendChild(gate);
+    document.getElementById("toggleAdminPassword").addEventListener("click", () => {
+      const input=document.getElementById("adminPassword");
+      const toggle=document.getElementById("toggleAdminPassword");
+      const visible=input.type==="password";
+      input.type=visible?"text":"password";
+      toggle.textContent=visible?"Hide":"Show";
+      toggle.setAttribute("aria-label", visible?"Hide password":"Show password");
+      toggle.setAttribute("aria-pressed", String(visible));
+    });
     document.getElementById("adminLoginForm").addEventListener("submit", async event => {
       event.preventDefault();
       const email=document.getElementById("adminEmail").value.trim();
@@ -181,6 +220,10 @@ function showGate(message="Admin sign in required.") {
       button.disabled=true;
       try {
         msg.textContent="Signing in…";
+        if (!auth) {
+          msg.textContent="Firebase Authentication is not initialized. Check the Firebase configuration.";
+          return;
+        }
         const result=await signInWithEmailAndPassword(auth,email,password);
         if(result.user.uid !== ADMIN_UID) {
           msg.textContent="This Firebase user is not the approved admin. Check the UID in Authentication → Users.";
@@ -204,16 +247,19 @@ if (!configured) {
   showGate("Firebase configuration is required before admin login can work.");
 } else {
   const app = getApps().length ? getApps()[0] : initializeApp(cfg);
-  const auth = getAuth(app);
+  auth = getAuth(app);
   window.BCCAdminSignOut = () => signOut(auth);
+  document.getElementById("adminSignOutBtn").addEventListener("click", () => signOut(auth));
   onAuthStateChanged(auth, async user => {
     if (user && user.uid === ADMIN_UID) {
       const gate=document.getElementById("adminGate");
       if(gate) gate.style.display="none";
       document.body.classList.add("admin-authorized");
+      document.getElementById("adminSignOutBtn").hidden=false;
       if (!window.BCCAdminDataStarted) { window.BCCAdminDataStarted = true; await window.BCCStartAdminData(); }
     } else {
       document.body.classList.remove("admin-authorized");
+      document.getElementById("adminSignOutBtn").hidden=true;
       if(user) {
         showGate("This account is not authorized as an administrator. Verify the UID in Firebase Authentication.");
         await signOut(auth);
