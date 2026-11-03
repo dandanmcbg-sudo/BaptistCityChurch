@@ -63,16 +63,38 @@ import {initializeApp,getApps,getApp} from "https://www.gstatic.com/firebasejs/1
 import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
 const ADMIN_UID="tSirLJ49mPTM2wo7kpmAxbqT7Rj2";
 const DEFAULT_SCRIPT_URL="https://script.google.com/macros/s/AKfycbygnbJ7Nml0qQR8e8oPzO8X7_q7Y7FtAVtswByRCnozABE0uUwNGBozhVMietTALK13Gw/exec";
-let people=[]; let sending=false;
+let people=[]; let sending=false; let adminReady=false; let dataStarted=false;
 const cfg=window.BCC_FIREBASE_CONFIG||{}; const configured=cfg.apiKey&&!String(cfg.apiKey).includes("PASTE_");
-window.addEventListener("bcc-data",e=>{people=e.detail.records||[];renderRecipients()}); if (!configured) { document.querySelector("main").innerHTML = "<h2>Firebase configuration required for invitations.</h2>"; } else {
+window.addEventListener("bcc-firestore-error",e=>{
+  const err=e.detail||{};
+  show("Firestore access denied ("+(err.code||"unknown")+"). Confirm the Firestore Rules were published for project baptistcitychurch-4491f and that the signed-in user's UID matches the admin UID. Email recipients cannot be verified until this is fixed.");
+});
+window.addEventListener("bcc-data",e=>{
+  if(!adminReady)return;
+  if(e.detail.source==="local"){
+    // A denied Firestore query must not be mistaken for a successful cloud sync.
+    show("Attendee records could not be verified from Firestore. Check the published rules for this Firebase project and the signed-in admin UID. Local records may be incomplete.");
+  }
+  people=e.detail.records||[];
+  renderRecipients();
+}); if (!configured) { document.querySelector("main").innerHTML = "<h2>Firebase configuration required for invitations.</h2>"; } else {
   const firebaseApp=getApps().length ? getApp() : initializeApp(cfg);
   const auth2=getAuth(firebaseApp);
   onAuthStateChanged(auth2, async u => {
     if(u && u.uid===ADMIN_UID) {
-      try { await startBCCData(); }
-      catch(error) { show("Unable to load attendees: " + (error.code || error.message)); }
-    } else { location.replace("admin.html"); }
+      adminReady=true;
+      try {
+        await u.getIdToken(true); // Refresh stale Firebase auth claims before Firestore access.
+        if(!dataStarted){ dataStarted=true; await startBCCData(); }
+      } catch(error) {
+        dataStarted=false;
+        show("Unable to load attendee records ("+(error.code||"unknown")+"). Confirm Firestore rules are published for project baptistcitychurch-4491f. " + (error.message||""));
+      }
+    } else {
+      adminReady=false;
+      people=[];renderRecipients();
+      location.replace("admin.html");
+    }
   }, error => show("Authentication error: " + (error.code || error.message)));
 }
 window.renderRecipients=renderRecipients;
@@ -107,8 +129,11 @@ async function send(recs){
     show("Request failed before confirmation: " + (error.message||"Unknown error") + ". Check the Apps Script deployment and Executions log.");
   }finally{sending=false;sendBtn.disabled=false;testBtn.disabled=false}
 }
-window.sendSelected=()=>send([...document.querySelectorAll(".pick:checked")].map(c=>people.find(x=>x.id===c.dataset.id)).filter(Boolean));
-window.sendTest=()=>{let email=prompt("Enter the test email address:");if(email)send([{name:"BCC Admin Test",email,category:"Test"}])}
+window.sendSelected=()=>{
+  if(!adminReady)return show("Admin authorization required before sending invitations.");
+  return send([...document.querySelectorAll(".pick:checked")].map(c=>people.find(x=>x.id===c.dataset.id)).filter(Boolean));
+};
+window.sendTest=()=>{if(!adminReady)return show("Admin authorization required before sending invitations.");let email=prompt("Enter the test email address:");if(email)send([{name:"BCC Admin Test",email,category:"Test"}])}
 function show(t){const el=document.getElementById("status");if(el){el.style.display="block";el.textContent=t}} function esc(v){return String(v||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 preview();
 </script></body></html>

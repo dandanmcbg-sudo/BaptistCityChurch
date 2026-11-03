@@ -57,6 +57,7 @@ export async function startBCCData(){
     emit();
   }, err => {
     console.error("Firestore listener:", err);
+    window.dispatchEvent(new CustomEvent("bcc-firestore-error", {detail:{code:err.code||"unknown",message:err.message||""}}));
     latest = localRead(); source = "local";
     emit();
   });
