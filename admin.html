@@ -140,6 +140,17 @@ import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.4.
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
 
 const ADMIN_UID = "tSirLJ49mPTM2wo7kpmAxbqT7Rj2";
+const AUTH_ERRORS = {
+  "auth/invalid-credential": "Incorrect email or password for this Firebase project. Check Authentication → Users, or reset the password there.",
+  "auth/user-not-found": "This email is not registered in the current Firebase project.",
+  "auth/wrong-password": "Incorrect password. Reset it in Firebase Authentication → Users.",
+  "auth/invalid-email": "Please enter a valid email address.",
+  "auth/operation-not-allowed": "Enable Email/Password in Firebase Authentication → Sign-in method.",
+  "auth/too-many-requests": "Too many attempts. Wait a while or reset the password.",
+  "auth/network-request-failed": "Network error. Check your internet connection.",
+  "auth/unauthorized-domain": "This website domain must be added under Firebase Authentication → Settings → Authorized domains.",
+  "auth/api-key-not-valid.-please-pass-a-valid-api-key.": "Firebase configuration is invalid."
+};
 const cfg = window.BCC_FIREBASE_CONFIG || {};
 const configured = cfg.apiKey && !String(cfg.apiKey).includes("PASTE_");
 
@@ -153,23 +164,36 @@ function showGate(message="Admin sign in required.") {
         <img src="assets/bcc-logo.png" alt="BCC logo">
         <h2>Baptist City Church</h2>
         <p>Admin Dashboard Sign In</p>
-        <input id="adminEmail" type="email" placeholder="Admin email" autocomplete="username">
-        <input id="adminPassword" type="password" placeholder="Password" autocomplete="current-password">
-        <button id="adminLoginBtn">Sign In</button>
-        <div id="adminLoginMsg">${message}</div>
+        <form id="adminLoginForm">
+          <input id="adminEmail" type="email" placeholder="Admin email" autocomplete="username" required>
+          <input id="adminPassword" type="password" placeholder="Password" autocomplete="current-password" required>
+          <button id="adminLoginBtn" type="submit">Sign In</button>
+        </form>
+        <div id="adminLoginMsg" role="alert" aria-live="polite">${message}</div>
       </div>`;
     document.body.appendChild(gate);
-    document.getElementById("adminLoginBtn").onclick = async () => {
+    document.getElementById("adminLoginForm").addEventListener("submit", async event => {
+      event.preventDefault();
       const email=document.getElementById("adminEmail").value.trim();
       const password=document.getElementById("adminPassword").value;
       const msg=document.getElementById("adminLoginMsg");
+      const button=document.getElementById("adminLoginBtn");
+      button.disabled=true;
       try {
         msg.textContent="Signing in…";
-        await signInWithEmailAndPassword(auth,email,password);
+        const result=await signInWithEmailAndPassword(auth,email,password);
+        if(result.user.uid !== ADMIN_UID) {
+          msg.textContent="This Firebase user is not the approved admin. Check the UID in Authentication → Users.";
+          await signOut(auth);
+        }
       } catch(e) {
-        msg.textContent="Unable to sign in. Check the email and password.";
+        const code=String(e.code || "unknown");
+        msg.textContent=(AUTH_ERRORS[code] || "Sign-in failed. Please check Firebase Authentication settings.") + " (" + code + ")";
+        console.error("BCC Firebase admin sign-in error:", code);
+      } finally {
+        button.disabled=false;
       }
-    };
+    });
   } else {
     gate.style.display="flex";
     document.getElementById("adminLoginMsg").textContent=message;
@@ -190,8 +214,13 @@ if (!configured) {
       if (!window.BCCAdminDataStarted) { window.BCCAdminDataStarted = true; await window.BCCStartAdminData(); }
     } else {
       document.body.classList.remove("admin-authorized");
-      if(user) await signOut(auth);
-      showGate(user ? "This account is not authorized as an administrator." : "Admin sign in required.");
+      if(user) {
+        showGate("This account is not authorized as an administrator. Verify the UID in Firebase Authentication.");
+        await signOut(auth);
+      } else {
+        const gate=document.getElementById("adminGate");
+        if(!gate || gate.style.display==="none") showGate("Admin sign in required.");
+      }
     }
   });
 }
