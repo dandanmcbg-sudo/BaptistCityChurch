@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Baptist City Church — Admin Dashboard</title>
+<style>
+:root{--ink:#171717;--muted:#71675d;--cream:#f5f0e8;--card:#fffdfa;--line:#e7ddd0;--danger:#b42318}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f6f2ec;color:var(--ink)}
+.shell{display:grid;grid-template-columns:250px 1fr;min-height:100vh}
+aside{background:#171717;color:#fff;padding:24px 18px;position:sticky;top:0;height:100vh}
+.brand{display:flex;gap:12px;align-items:center;margin-bottom:32px}.brand img{width:52px;height:52px;border-radius:13px;object-fit:cover}.brand b{display:block}.brand span{font-size:.75rem;color:#cfc7bd}
+nav a{display:block;color:#d8d3cd;text-decoration:none;padding:11px 12px;border-radius:10px;margin:5px 0;font-size:.9rem}nav a:hover,nav a.active{background:#2b2926;color:#fff}
+.side-bottom{position:absolute;bottom:22px;left:18px;right:18px;font-size:.76rem;color:#aaa29a}
+main{padding:28px;max-width:1500px;width:100%}.top{display:flex;justify-content:space-between;gap:18px;align-items:center;margin-bottom:24px}.top h1{margin:0;font-size:1.7rem}.top p{margin:4px 0 0;color:var(--muted)}
+.btn{border:0;background:#171717;color:#fff;border-radius:10px;padding:10px 14px;cursor:pointer;font-weight:650}.btn.light{background:#fff;color:#171717;border:1px solid var(--line)}.btn.danger{background:var(--danger)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.stat,.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 5px 18px rgba(0,0,0,.035)}
+.stat{padding:18px}.label{font-size:.75rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em}.value{font-size:1.8rem;font-weight:800;margin-top:7px}
+.panel{padding:20px;margin-bottom:18px}.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}.panel h2{font-size:1rem;margin:0}
+.controls{display:flex;gap:8px;flex-wrap:wrap}input,select{border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:white;min-height:40px}
+table{width:100%;border-collapse:collapse}th,td{padding:12px 10px;border-bottom:1px solid #eee6dc;text-align:left;font-size:.86rem}th{font-size:.72rem;text-transform:uppercase;color:#766b60;background:#faf7f2}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:.72rem;font-weight:700}.Member{background:#eee8df}.Visitor{background:#f6eddc}.Guest{background:#eee7e0}
+.small{font-size:.78rem;color:var(--muted)}.empty{text-align:center;padding:28px;color:var(--muted)}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.48);align-items:center;justify-content:center;padding:20px}.modal.show{display:flex}.box{background:#fff;border-radius:16px;padding:22px;width:min(520px,100%)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}.field label{font-size:.78rem;font-weight:700}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+@media(max-width:900px){.shell{grid-template-columns:1fr}aside{height:auto;position:relative}.side-bottom{display:none}nav{display:flex;overflow:auto}.stats{grid-template-columns:1fr 1fr}main{padding:16px}.panel{overflow:auto}}
+@media(max-width:560px){.stats{grid-template-columns:1fr 1fr}.top{align-items:flex-start;flex-direction:column}.grid{grid-template-columns:1fr}}
+</style>
+<link rel="manifest" href="manifest.webmanifest">
+<script src="firebase-config.js"></script>
+
+<style>
+body:not(.admin-authorized) .shell{filter:blur(3px);pointer-events:none;user-select:none}
+#adminGate{position:fixed;inset:0;z-index:99999;background:rgba(20,18,16,.72);display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-card{width:min(390px,100%);background:#fffdfa;border:1px solid #e7ddd0;border-radius:20px;padding:28px;box-shadow:0 25px 70px rgba(0,0,0,.25);text-align:center}
+.auth-card img{width:74px;height:74px;border-radius:16px;object-fit:cover}
+.auth-card h2{margin:12px 0 4px}.auth-card p{margin:0 0 18px;color:#71675d}
+.auth-card input{width:100%;margin:6px 0;padding:12px;border:1px solid #e7ddd0;border-radius:10px}
+.auth-card button{width:100%;margin-top:10px;padding:12px;border:0;border-radius:10px;background:#171717;color:white;font-weight:700;cursor:pointer}
+#adminLoginMsg{margin-top:12px;font-size:.8rem;color:#71675d}
+</style>
+
+</head>
+<body>
+<div class="shell">
+<aside>
+ <div class="brand"><img src="assets/bcc-logo.png"><div><b>Baptist City Church</b><span>Attendance Admin</span></div></div>
+ <nav>
+  <a class="active" href="admin.html">Dashboard</a>
+  <a href="#records">Attendance Records</a>
+  <a href="#backup">Backup & Data</a>
+  <a href="invitation.html">Invitation Center</a>
+  <a href="index.html">Public Check-in Page</a>
+ </nav>
+ <div class="side-bottom">Offline-first • Data is stored on this device</div>
+</aside>
+<main>
+ <div class="top"><div><h1>Admin Dashboard</h1><p>Manage Baptist City Church attendance records.</p></div><button class="btn" onclick="openAdd()">+ Add Person</button></div>
+ <section class="stats">
+  <div class="stat"><div class="label">Total People</div><div class="value" id="people">0</div></div>
+  <div class="stat"><div class="label">Members</div><div class="value" id="members">0</div></div>
+  <div class="stat"><div class="label">Visitors & Guests</div><div class="value" id="visitors">0</div></div>
+  <div class="stat"><div class="label">Total Check-ins</div><div class="value" id="checkins">0</div></div>
+ </section>
+ <section class="panel" id="records">
+  <div class="panel-head"><div><h2>Attendance Directory</h2><div class="small">Edit, search, and manage all saved records.</div></div>
+   <div class="controls"><select id="filter" onchange="render()"><option value="">All Categories</option><option>Member</option><option>Visitor</option><option>Guest</option></select><input id="search" placeholder="Search name or contact..." oninput="render()"></div>
+  </div>
+  <table><thead><tr><th>Name</th><th>Category</th><th>Contact</th><th>Attendance</th><th>Last Attended</th><th>Action</th></tr></thead><tbody id="rows"></tbody></table>
+ </section>
+ <section class="panel" id="backup">
+  <div class="panel-head"><div><h2>Backup & Data</h2><div class="small">Export a backup regularly. Offline browser data can be lost if site storage is cleared.</div></div></div>
+  <div class="controls"><button class="btn" onclick="exportCSV()">Export CSV Backup</button><button class="btn light" onclick="document.getElementById('importFile').click()">Import CSV</button><input id="importFile" type="file" accept=".csv" hidden onchange="importCSV(event)"><button class="btn danger" onclick="clearAll()">Clear All Records</button></div>
+ </section>
+</main>
+</div>
+
+<div class="modal" id="modal"><div class="box">
+ <h2 id="modalTitle" style="margin-top:0">Edit Record</h2>
+ <div class="grid">
+  <div class="field full"><label>Full Name</label><input id="name"></div>
+  <div class="field"><label>Category</label><select id="category"><option>Member</option><option>Visitor</option><option>Guest</option></select></div>
+  <div class="field"><label>Contact</label><input id="contact"></div>
+  <div class="field"><label>Email</label><input id="personEmail" type="email"></div>
+  <div class="field"><label>Ministry</label><input id="personMinistry"></div>
+  <div class="field"><label>First-time Visitor</label><select id="personFirstTime"><option value="No">No</option><option value="Yes">Yes</option></select></div>
+  <div class="field"><label>Invited By</label><input id="personInvitedBy"></div>
+  <div class="field"><label>Preferred Contact</label><select id="personContactMethod"><option value="">Not specified</option><option>Email</option><option>SMS</option><option>Phone Call</option></select></div>
+  <div class="field"><label>Birthday</label><input id="personBirthday" type="date"></div>
+  <div class="field full"><label>Prayer Request (confidential)</label><textarea id="personPrayerRequest" rows="2"></textarea></div>
+  <div class="field full"><label><input id="personConsent" type="checkbox"> Consented to email reminders and invitations</label></div>
+  <div class="field"><label>Total Attendance</label><input id="attendance" type="number" min="0"></div>
+  <div class="field"><label>Last Attended</label><input id="last" type="date"></div>
+ </div>
+ <div class="actions"><button class="btn light" onclick="closeModal()">Cancel</button><button class="btn" onclick="saveRecord()">Save Changes</button></div>
+</div></div>
+
+<script>
+let db=[], editing=null;
+function save(){localStorage.setItem('church_db',JSON.stringify(db));if(window.BCCStore)window.BCCStore.syncAll(db);render()}
+function stats(){people.textContent=db.length;members.textContent=db.filter(x=>x.category==='Member').length;visitors.textContent=db.filter(x=>x.category!=='Member').length;checkins.textContent=db.reduce((a,x)=>a+(Number(x.totalAttendance)||0),0)}
+function render(){
+ stats();let q=search.value.toLowerCase().trim(),f=filter.value;
+ let data=db.filter(x=>(!f||x.category===f)&&((x.name||'').toLowerCase().includes(q)||(x.contact||'').toLowerCase().includes(q)));
+ rows.innerHTML=data.length?data.map(x=>`<tr><td><b>${esc(x.name)}</b></td><td><span class="badge ${x.category}">${esc(x.category)}</span></td><td>${esc(x.contact||'-')}</td><td>${Number(x.totalAttendance)||0}</td><td>${esc(x.lastAttended||'-')}</td><td><button class="btn light" onclick="edit('${x.id}')">Edit</button> <button class="btn light" onclick="del('${x.id}')">Delete</button></td></tr>`).join(''):`<tr><td colspan="6" class="empty">No records found.</td></tr>`;
+}
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function fillExtra(x={}){personEmail.value=x.email||'';personMinistry.value=x.ministry||'';personFirstTime.value=x.firstTimeVisitor?'Yes':'No';personInvitedBy.value=x.invitedBy||'';personContactMethod.value=x.contactMethod||'';personBirthday.value=x.birthday||'';personPrayerRequest.value=x.prayerRequest||'';personConsent.checked=x.reminderConsent===true}
+function openAdd(){editing=null;modalTitle.textContent='Add Person';name.value='';category.value='Member';contact.value='';attendance.value=1;last.value=new Date().toISOString().slice(0,10);fillExtra();modal.classList.add('show')}
+function edit(id){let x=db.find(v=>v.id===id);if(!x)return;editing=id;modalTitle.textContent='Edit Record';name.value=x.name||'';category.value=x.category||'Member';contact.value=x.contact||'';attendance.value=x.totalAttendance||0;last.value=x.lastAttended||'';fillExtra(x);modal.classList.add('show')}
+function closeModal(){modal.classList.remove('show')}
+function saveRecord(){let n=name.value.trim();if(!n)return alert('Full name is required.');let old=editing?db.find(x=>x.id===editing):null;let consent=personConsent.checked;let obj={...(old||{}),id:editing||('id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),name:n,category:category.value,contact:contact.value.trim(),email:personEmail.value.trim(),ministry:personMinistry.value.trim(),firstTimeVisitor:personFirstTime.value==='Yes',invitedBy:personInvitedBy.value.trim(),contactMethod:personContactMethod.value,birthday:personBirthday.value,prayerRequest:personPrayerRequest.value.trim(),reminderConsent:consent,reminderEnabled:consent,totalAttendance:Number(attendance.value)||0,lastAttended:last.value,notes:old?.notes||''};if(editing){let i=db.findIndex(x=>x.id===editing);if(i>=0)db[i]=obj}else db.push(obj);save();closeModal()}
+function del(id){let x=db.find(v=>v.id===id);if(x&&confirm(`Delete ${x.name}'s record?`)){db=db.filter(v=>v.id!==id);if(window.BCCStore)window.BCCStore.remove(id);save()}}
+function clearAll(){if(confirm('Clear ALL attendance records?')&&confirm('Final confirmation: this cannot be undone without a backup.')){if(window.BCCStore)window.BCCStore.clear();db=[];save()}}
+function exportCSV(){if(!db.length)return alert('No records to export.');let csv='Full Name,Category,Contact Number,Total Attendance,Last Attended,Notes\n'+db.map(x=>[x.name,x.category,x.contact||'',x.totalAttendance||0,x.lastAttended||'',x.notes||''].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='BCC_Attendance_Backup_'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(a.href)}
+function importCSV(e){let file=e.target.files[0];if(!file)return;let r=new FileReader();r.onload=()=>{let lines=r.result.split(/\r?\n/).slice(1).filter(Boolean);for(let line of lines){let c=line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g)||[];c=c.map(v=>v.replace(/^"|"$/g,'').replace(/""/g,'"'));if(!c[0])continue;let old=db.find(x=>x.name.toLowerCase()===c[0].toLowerCase());let obj={id:old?.id||('id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),name:c[0],category:c[1]||'Member',contact:c[2]||'',totalAttendance:Number(c[3])||0,lastAttended:c[4]||'',notes:c[5]||''};if(old)Object.assign(old,obj);else db.push(obj)}save();alert('Import complete.');e.target.value=''};r.readAsText(file)}
+render();
+</script>
+
+<script type="module">
+import {startBCCData,upsertBCCRecord,removeBCCRecord,clearBCCRecords} from "./firebase-data.js";
+window.BCCStore={
+ remove:removeBCCRecord,
+ clear:clearBCCRecords,
+ syncAll(records){records.forEach(r=>upsertBCCRecord(r))}
+};
+function addSyncBadge(source){
+ let b=document.getElementById("syncBadge");
+ if(!b){b=document.createElement("div");b.id="syncBadge";b.className="small";document.querySelector(".top>div").appendChild(b);}
+ b.textContent=navigator.onLine?(source==="cloud"?"● Firebase synced":"● Online • syncing"):"● Offline • changes queued";
+}
+window.addEventListener("bcc-data",e=>{db=e.detail.records||[];render();addSyncBadge(e.detail.source)});
+window.addEventListener("bcc-network",()=>addSyncBadge("cache"));
+window.BCCStartAdminData = async () => { await startBCCData(); addSyncBadge("cache"); };
+if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(console.error);
+</script>
+
+
+<script type="module">
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
+
+const ADMIN_UID = "nozJl8upb4MrCdjeBgQ41VfTRNp1";
+const cfg = window.BCC_FIREBASE_CONFIG || {};
+const configured = cfg.apiKey && !String(cfg.apiKey).includes("PASTE_");
+
+function showGate(message="Admin sign in required.") {
+  let gate = document.getElementById("adminGate");
+  if (!gate) {
+    gate = document.createElement("div");
+    gate.id = "adminGate";
+    gate.innerHTML = `
+      <div class="auth-card">
+        <img src="assets/bcc-logo.png" alt="BCC logo">
+        <h2>Baptist City Church</h2>
+        <p>Admin Dashboard Sign In</p>
+        <input id="adminEmail" type="email" placeholder="Admin email" autocomplete="username">
+        <input id="adminPassword" type="password" placeholder="Password" autocomplete="current-password">
+        <button id="adminLoginBtn">Sign In</button>
+        <div id="adminLoginMsg">${message}</div>
+      </div>`;
+    document.body.appendChild(gate);
+    document.getElementById("adminLoginBtn").onclick = async () => {
+      const email=document.getElementById("adminEmail").value.trim();
+      const password=document.getElementById("adminPassword").value;
+      const msg=document.getElementById("adminLoginMsg");
+      try {
+        msg.textContent="Signing in…";
+        await signInWithEmailAndPassword(auth,email,password);
+      } catch(e) {
+        msg.textContent="Unable to sign in. Check the email and password.";
+      }
+    };
+  } else {
+    gate.style.display="flex";
+    document.getElementById("adminLoginMsg").textContent=message;
+  }
+}
+
+if (!configured) {
+  showGate("Firebase configuration is required before admin login can work.");
+} else {
+  const app = getApps().length ? getApps()[0] : initializeApp(cfg);
+  const auth = getAuth(app);
+  window.BCCAdminSignOut = () => signOut(auth);
+  onAuthStateChanged(auth, async user => {
+    if (user && user.uid === ADMIN_UID) {
+      const gate=document.getElementById("adminGate");
+      if(gate) gate.style.display="none";
+      document.body.classList.add("admin-authorized");
+      if (!window.BCCAdminDataStarted) { window.BCCAdminDataStarted = true; await window.BCCStartAdminData(); }
+    } else {
+      document.body.classList.remove("admin-authorized");
+      if(user) await signOut(auth);
+      showGate(user ? "This account is not authorized as an administrator." : "Admin sign in required.");
+    }
+  });
+}
+</script>
+
+</body></html>

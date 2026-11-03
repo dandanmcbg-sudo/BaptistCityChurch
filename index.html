@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Baptist City Church — Attendance Management System</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #0f172a;
+            --border: #e2e8f0;
+            --success: #16a34a;
+            --danger: #dc2626;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: var(--text);
+            margin: 0;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: var(--card-bg);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            padding: 20px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .header-logo {
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            object-fit: cover;
+            background: #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+        }
+
+        .header-title h1 { margin: 0; font-size: 1.6rem; }
+        .header-title p { margin: 4px 0 0 0; color: #64748b; font-size: 0.9rem; }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            padding: 20px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .card-header-flex {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .search-box {
+            width: 250px;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr auto;
+            gap: 12px;
+            align-items: end;
+        }
+
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        label { font-size: 0.875rem; font-weight: 600; }
+
+        input, select, textarea {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 9px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        button:hover { background-color: var(--primary-hover); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            margin-top: 12px;
+        }
+
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th { background-color: #f1f5f9; font-size: 0.85rem; text-transform: uppercase; }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-member { background: #dbeafe; color: #1e40af; }
+        .badge-visitor { background: #fef9c3; color: #854d0e; }
+        .badge-guest { background: #fce7f3; color: #9d174d; }
+
+        .action-btn {
+            background: none;
+            border: none;
+            color: var(--primary);
+            cursor: pointer;
+            padding: 4px 8px;
+            text-decoration: underline;
+            font-size: 0.85rem;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            width: 450px;
+            max-width: 90%;
+        }
+        .modal-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .full-width { grid-column: span 2; }
+        .modal-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+        }
+        .right-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Hidden Admin Controls */
+        .admin-bar {
+            display: none;
+            margin-top: 12px;
+            padding: 16px;
+            background: #e2e8f0;
+            border-radius: 6px;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .admin-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+    </style>
+
+<style>
+:root{
+  --primary:#1d4ed8; --primary-hover:#1e40af; --bg:#f4f7fb; --card-bg:#fff;
+  --text:#0f172a; --muted:#64748b; --border:#dbe3ef; --success:#16a34a; --danger:#dc2626;
+}
+*{box-sizing:border-box}
+body{min-height:100vh;background:
+ radial-gradient(circle at 5% 0%,rgba(37,99,235,.09),transparent 28%),
+ linear-gradient(180deg,#f8fbff 0%,#f4f7fb 100%);padding:28px}
+.container{max-width:1180px}
+header{border:0;border-radius:18px;padding:24px 26px;box-shadow:0 12px 35px rgba(15,23,42,.08);
+background:linear-gradient(135deg,#fff 0%,#f8fbff 100%);overflow:hidden}
+.header-logo{width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,#dbeafe,#eff6ff);
+box-shadow:inset 0 0 0 1px #bfdbfe}
+.header-title h1{font-size:1.8rem;letter-spacing:-.03em}.header-title p{color:var(--muted)}
+.offline-pill{margin-left:auto;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;
+background:#ecfdf5;color:#166534;font-size:.8rem;font-weight:700;border:1px solid #bbf7d0}
+.offline-dot{width:8px;height:8px;border-radius:50%;background:#22c55e}
+.card{border:1px solid var(--border);border-radius:18px;padding:22px;box-shadow:0 8px 25px rgba(15,23,42,.045)}
+.card h3{margin-top:0;letter-spacing:-.02em}
+input,select,textarea{min-height:42px;border-radius:10px;background:#fff;outline:none;transition:.18s}
+input:focus,select:focus,textarea:focus{border-color:#60a5fa;box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+button{border-radius:10px;min-height:42px;transition:.18s;box-shadow:0 2px 6px rgba(37,99,235,.12)}
+button:hover{transform:translateY(-1px)}
+table{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+th{background:#f8fafc;color:#475569} tbody tr:hover{background:#f8fbff}
+.action-btn{box-shadow:none;min-height:auto}
+.admin-bar{border:1px solid var(--border);background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(15,23,42,.08)}
+.empty-note{font-size:.82rem;color:var(--muted);margin-top:8px}
+@media(max-width:900px){
+ .form-grid{grid-template-columns:1fr 1fr}
+ .form-grid button{grid-column:span 2}
+ .card{overflow-x:auto}
+}
+@media(max-width:600px){
+ body{padding:14px}.stats{grid-template-columns:1fr 1fr}
+ header{align-items:flex-start}.offline-pill{display:none}
+ .form-grid{grid-template-columns:1fr}.form-grid button{grid-column:auto}
+ .search-box{width:100%}.card-header-flex{align-items:stretch}
+}
+</style>
+
+
+<style>
+:root{
+ --primary:#171717; --primary-hover:#000000;
+ --bg:#f4efe7; --card-bg:#fffdfa; --text:#171717; --border:#e7ddd0;
+}
+body{
+ background:
+ radial-gradient(circle at 15% 0%,rgba(173,132,84,.12),transparent 28%),
+ linear-gradient(180deg,#faf7f2 0%,#f3eee6 100%);
+}
+header{
+ background:linear-gradient(135deg,#fffdfa 0%,#f5eee4 100%);
+ border:1px solid #e7ddd0;
+}
+.header-logo{
+ width:76px;height:76px;padding:0;background:#f4efe7;border:1px solid #ded3c5;overflow:hidden;
+}
+.bcc-logo{width:100%;height:100%;object-fit:cover;display:block}
+.offline-pill{background:#f4efe7;color:#594a3a;border-color:#ded3c5}
+.offline-dot{background:#171717}
+button{background:#171717;box-shadow:0 2px 6px rgba(0,0,0,.12)}
+button:hover{background:#000}
+input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3px rgba(139,115,85,.12)}
+.badge-member{background:#eee8df;color:#3f352a}
+.badge-visitor{background:#f6eddc;color:#795a2d}
+.badge-guest{background:#eee7e0;color:#6b4e3d}
+</style>
+
+<link rel="manifest" href="manifest.webmanifest">
+<script src="firebase-config.js"></script>
+</head>
+<body>
+
+
+<div class="container">
+    <header id="headerCard">
+        <div id="logoContainer" class="header-logo"><img src="assets/bcc-logo.png" alt="Baptist City Church logo" class="bcc-logo"></div>
+        <div class="header-title">
+            <h1 id="churchNameTitle">Baptist City Church</h1>
+            <p id="churchSubtitle">Attendance Management System • Sunday Service</p>
+        </div><div style="margin-left:auto;display:flex;gap:8px;align-items:center;"><a href="admin.html" style="text-decoration:none;background:#171717;color:white;padding:10px 14px;border-radius:10px;font-size:.82rem;font-weight:700;">Admin Dashboard</a><div class="offline-pill" style="margin-left:0"><span class="offline-dot"></span>Offline Ready</div></div>
+    </header>
+
+    <!-- Sunday Check-in Form -->
+    <div class="card">
+        <h3>Sunday Check-in</h3><div class="empty-note">Records are saved on this device, so this page can be used without internet.</div>
+        <form id="attendanceForm" class="form-grid">
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="fullName" required placeholder="Type attendee name...">
+            </div>
+            <div class="form-group">
+                <label>Category</label>
+                <select id="category">
+                    <option value="Member">Member</option>
+                    <option value="Visitor">Visitor</option>
+                    <option value="Guest">Guest</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" id="email" placeholder="name@example.com">
+            </div>
+            <div class="form-group">
+                <label>Contact Number</label>
+                <input type="text" id="contact" placeholder="e.g. 09123456789">
+            </div>
+            <div class="form-group">
+                <label>Initial Attendance</label>
+                <input type="number" id="initialCount" value="1" min="0">
+            </div>
+
+            <div class="form-group"><label>Ministry / Department (optional)</label><select id="ministry"><option value="">Select ministry</option><option>Youth Ministry</option><option>Music Ministry</option><option>Ushering</option><option>Children's Ministry</option><option>Prayer Ministry</option><option>Other</option><option>None</option></select></div>
+            <div class="form-group"><label>First-time Visitor?</label><select id="firstTimeVisitor"><option value="No">No</option><option value="Yes">Yes</option></select></div>
+            <div class="form-group"><label>Invited By (optional)</label><input id="invitedBy" placeholder="Name of person who invited you"></div>
+            <div class="form-group"><label>Preferred Contact Method</label><select id="contactMethod"><option value="">Not specified</option><option>Email</option><option>SMS</option><option>Phone Call</option></select></div>
+            <div class="form-group"><label>Birthday (optional)</label><input id="birthday" type="date"></div>
+            <div class="form-group" style="grid-column:1/-1"><label>Prayer Request (optional, for church leaders only)</label><textarea id="prayerRequest" rows="2" placeholder="Share only what you are comfortable sharing"></textarea></div>
+            <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:flex-start;gap:9px;font-weight:500"><input id="reminderConsent" type="checkbox" style="width:auto;margin-top:3px"> I agree to receive Sunday reminders and church event invitations by email. I can opt out later.</label></div>
+            <button type="submit" id="submitBtn">Record Check-in</button>
+        </form>
+    </div>
+
+    <!-- Master Directory Table -->
+    <div class="card">
+        <div class="card-header-flex">
+            <h3 style="margin:0;">Attendance Directory</h3>
+            <input type="text" id="searchInput" class="search-box" placeholder="🔍 Search database..." oninput="renderTable()">
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Full Name</th>
+                    <th>Category</th>
+                    <th>Contact</th>
+                    <th>Total Attendance</th>
+                    <th>Last Attended</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="memberTableBody">
+                <!-- Records display here -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- EDIT DETAILS MODAL -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <h3>Edit Member Details</h3>
+        <form id="editForm">
+            <input type="hidden" id="editId">
+            <div class="modal-grid">
+                <div class="form-group full-width">
+                    <label>Full Name</label>
+                    <input type="text" id="editName" required>
+                </div>
+                <div class="form-group">
+                    <label>Category</label>
+                    <select id="editCategory">
+                        <option value="Member">Member</option>
+                        <option value="Visitor">Visitor</option>
+                        <option value="Guest">Guest</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Contact Number</label>
+                    <input type="text" id="editContact">
+                </div>
+                <div class="form-group">
+                    <label>Total Attendance</label>
+                    <input type="number" id="editAttendance" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Last Attended</label>
+                    <input type="date" id="editLastAttended">
+                </div>
+
+                <div class="form-group"><label>Email Address</label><input type="email" id="editEmail"></div>
+                <div class="form-group"><label>Ministry</label><input id="editMinistry"></div>
+                <div class="form-group"><label>First-time Visitor</label><select id="editFirstTimeVisitor"><option value="No">No</option><option value="Yes">Yes</option></select></div>
+                <div class="form-group"><label>Invited By</label><input id="editInvitedBy"></div>
+                <div class="form-group"><label>Contact Method</label><select id="editContactMethod"><option value="">Not specified</option><option>Email</option><option>SMS</option><option>Phone Call</option></select></div>
+                <div class="form-group"><label>Birthday</label><input type="date" id="editBirthday"></div>
+                <div class="form-group full-width"><label>Prayer Request (confidential)</label><textarea id="editPrayerRequest" rows="2"></textarea></div>
+                <div class="form-group full-width"><label><input type="checkbox" id="editReminderConsent" style="width:auto"> Email reminder consent</label></div>
+                <div class="form-group full-width">
+                    <label>Notes / Address / Remarks</label>
+                    <textarea id="editNotes" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" style="background:var(--danger);" onclick="deleteFromModal()">Delete Record</button>
+                <div class="right-buttons">
+                    <button type="button" style="background:#64748b;" onclick="closeModal()">Cancel</button>
+                    <button type="submit">Save Changes</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    let db = [];
+
+    db.forEach(person => {
+        if (!person.id) person.id = 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+    });
+
+    function saveDB() {
+        localStorage.setItem('church_db', JSON.stringify(db));
+        if (window.BCCStore) window.BCCStore.syncAll(db);
+        renderTable();
+
+    }
+
+
+
+    function escapeBCC(v) { return String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+    function renderTable() {
+        const tbody = document.getElementById('memberTableBody');
+        const query = document.getElementById('searchInput').value.toLowerCase().trim();
+        tbody.innerHTML = '';
+
+        const filtered = db.filter(person => 
+            person.name.toLowerCase().includes(query) ||
+            person.category.toLowerCase().includes(query) ||
+            (person.contact && person.contact.toLowerCase().includes(query))
+        );
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#64748b; padding:20px;">No matching records found.</td></tr>`;
+            return;
+        }
+
+        filtered.forEach((person) => {
+            const tr = document.createElement('tr');
+            const badgeClass = person.category === 'Member' ? 'badge-member' : 
+                               (person.category === 'Visitor' ? 'badge-visitor' : 'badge-guest');
+
+            tr.innerHTML = `
+                <td><strong>${escapeBCC(person.name)}</strong></td>
+                <td><span class="badge ${badgeClass}">${person.category}</span></td>
+                <td>${escapeBCC(person.contact || '-')}</td>
+                <td>${person.totalAttendance}</td>
+                <td>${escapeBCC(person.lastAttended)}</td>
+                <td>
+                    <button class="action-btn" onclick="openEditModal('${person.id}')">✏️ Edit Details</button>
+                    <button class="action-btn" style="color: #dc2626;" onclick="deleteRecord('${person.id}')">Delete</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    document.getElementById('attendanceForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const name = document.getElementById('fullName').value.trim();
+        const category = document.getElementById('category').value;
+        const email = document.getElementById('email').value.trim();
+        const contact = document.getElementById('contact').value.trim();
+        const ministry = document.getElementById('ministry').value;
+        const firstTimeVisitor = document.getElementById('firstTimeVisitor').value === 'Yes';
+        const invitedBy = document.getElementById('invitedBy').value.trim();
+        const contactMethod = document.getElementById('contactMethod').value;
+        const birthday = document.getElementById('birthday').value;
+        const prayerRequest = document.getElementById('prayerRequest').value.trim();
+        const reminderConsent = document.getElementById('reminderConsent').checked;
+        const extra = {ministry,firstTimeVisitor,invitedBy,contactMethod,birthday,prayerRequest,reminderConsent,reminderEnabled:reminderConsent};
+        const initialCount = parseInt(document.getElementById('initialCount').value, 10) || 1;
+        const today = new Date().toISOString().split('T')[0];
+
+        const existing = db.find(p => p.name.toLowerCase() === name.toLowerCase());
+
+        if (existing) {
+            existing.totalAttendance += 1;
+            existing.lastAttended = today;
+            Object.assign(existing,extra);
+            if (email) existing.email = email;
+            if (contact) existing.contact = contact;
+        } else {
+            db.push({
+                id: 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                name: name,
+                category: category,
+                email: email,
+                ...extra,
+                contact: contact,
+                totalAttendance: initialCount,
+                lastAttended: today,
+                notes: ''
+            });
+        }
+
+        const savedPerson = db.find(p => p.name.toLowerCase() === name.toLowerCase());
+        if (savedPerson && savedPerson.reminderConsent === true) syncAttendeeToReminderBackend(savedPerson);
+        this.reset();
+        document.getElementById('initialCount').value = 1;
+        saveDB();
+    });
+
+    function deleteRecord(id) {
+        const person = db.find(p => p.id === id);
+        if (!person) return;
+        if (!confirm(`Delete ${person.name}'s record? This cannot be undone.`)) return;
+        db = db.filter(p => p.id !== id);
+        if (window.BCCStore) window.BCCStore.remove(id);
+        saveDB();
+    }
+
+    function openEditModal(id) {
+        const person = db.find(p => p.id === id);
+        if (!person) return;
+        document.getElementById('editId').value = person.id;
+        document.getElementById('editName').value = person.name;
+        document.getElementById('editCategory').value = person.category;
+        document.getElementById('editContact').value = person.contact || '';
+        document.getElementById('editEmail').value = person.email || '';
+        document.getElementById('editMinistry').value = person.ministry || '';
+        document.getElementById('editFirstTimeVisitor').value = person.firstTimeVisitor ? 'Yes' : 'No';
+        document.getElementById('editInvitedBy').value = person.invitedBy || '';
+        document.getElementById('editContactMethod').value = person.contactMethod || '';
+        document.getElementById('editBirthday').value = person.birthday || '';
+        document.getElementById('editPrayerRequest').value = person.prayerRequest || '';
+        document.getElementById('editReminderConsent').checked = person.reminderConsent === true;
+        document.getElementById('editAttendance').value = person.totalAttendance;
+        document.getElementById('editLastAttended').value = person.lastAttended;
+        document.getElementById('editNotes').value = person.notes || '';
+        document.getElementById('editModal').style.display = 'flex';
+    }
+
+    function deleteFromModal() {
+        const id = document.getElementById('editId').value;
+        const person = db.find(p => p.id === id);
+        if (!person) return;
+        if (!confirm(`Delete ${person.name}'s record? This cannot be undone.`)) return;
+        db = db.filter(p => p.id !== id);
+        if (window.BCCStore) window.BCCStore.remove(id);
+        saveDB();
+        closeModal();
+    }
+
+    function closeModal() {
+        document.getElementById('editModal').style.display = 'none';
+    }
+
+    document.getElementById('editForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const id = document.getElementById('editId').value;
+        const person = db.find(p => p.id === id);
+        if (person) {
+            person.name = document.getElementById('editName').value.trim();
+            person.category = document.getElementById('editCategory').value;
+            person.contact = document.getElementById('editContact').value.trim();
+            person.email = document.getElementById('editEmail').value.trim();
+            person.ministry = document.getElementById('editMinistry').value.trim();
+            person.firstTimeVisitor = document.getElementById('editFirstTimeVisitor').value === 'Yes';
+            person.invitedBy = document.getElementById('editInvitedBy').value.trim();
+            person.contactMethod = document.getElementById('editContactMethod').value;
+            person.birthday = document.getElementById('editBirthday').value;
+            person.prayerRequest = document.getElementById('editPrayerRequest').value.trim();
+            person.reminderConsent = document.getElementById('editReminderConsent').checked;
+            person.reminderEnabled = person.reminderConsent;
+            person.totalAttendance = parseInt(document.getElementById('editAttendance').value, 10) || 0;
+            person.lastAttended = document.getElementById('editLastAttended').value;
+            person.notes = document.getElementById('editNotes').value.trim();
+            saveDB();
+        }
+        closeModal();
+    });
+
+    function toggleAdminBar() {
+        const bar = document.getElementById('adminBar');
+        bar.style.display = bar.style.display === 'flex' ? 'none' : 'flex';
+    }
+
+    function clearAllData() {
+        if (!confirm('Clear ALL attendance records on this device?')) return;
+        if (!confirm('Final confirmation: this cannot be undone unless you exported a CSV backup.')) return;
+        db = [];
+        saveDB();
+    }
+
+    function uploadImage(event, storageKey) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            localStorage.setItem(storageKey, e.target.result);
+            applyBranding();
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function resetImages() {
+        localStorage.removeItem('church_logo');
+        localStorage.removeItem('church_banner');
+        localStorage.removeItem('church_bg');
+        
+        document.getElementById('logoContainer').innerHTML = '<img src="assets/bcc-logo.png" alt="Baptist City Church logo" class="bcc-logo">';
+        document.getElementById('headerCard').style.backgroundImage = 'none';
+        document.body.style.backgroundImage = 'none';
+    }
+
+    function applyBranding() {
+        const logo = localStorage.getItem('church_logo');
+        const banner = localStorage.getItem('church_banner');
+        const bg = localStorage.getItem('church_bg');
+
+        if (logo) {
+            document.getElementById('logoContainer').innerHTML = `<img src="${logo}" style="width:100%; height:100%; border-radius:8px; object-fit:cover;">`;
+        }
+        if (banner) {
+            document.getElementById('headerCard').style.backgroundImage = `url('${banner}')`;
+        }
+        if (bg) {
+            document.body.style.backgroundImage = `url('${bg}')`;
+        }
+    }
+
+    function exportCSV() {
+        if (db.length === 0) return;
+        let csv = "Full Name,Category,Contact Number,Total Attendance,Last Attended,Notes\n";
+        db.forEach(row => {
+            csv += `"${row.name}","${row.category}","${row.contact || ''}",${row.totalAttendance},"${row.lastAttended}","${row.notes || ''}"\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `Church_Attendance_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+    }
+
+    function importCSV(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const lines = e.target.result.split('\n').slice(1);
+            let importedCount = 0;
+            
+            lines.forEach(line => {
+                if (!line.trim()) return;
+                const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+                
+                const name = cols[0];
+                if (!name) return; 
+
+                const category = cols[1] && cols[1] !== "" ? cols[1] : 'Member';
+                const contact = cols[2] && cols[2] !== "" ? cols[2] : '-';
+                const totalAttendance = cols[3] && !isNaN(parseInt(cols[3], 10)) ? parseInt(cols[3], 10) : 1;
+                const lastAttended = cols[4] && cols[4] !== "" ? cols[4] : new Date().toISOString().split('T')[0];
+                const notes = cols[5] && cols[5] !== "" ? cols[5] : '';
+
+                const existing = db.find(p => p.name.toLowerCase() === name.toLowerCase());
+                if (existing) {
+                    existing.totalAttendance += totalAttendance;
+                    if (contact !== '-') existing.contact = contact;
+                } else {
+                    db.push({
+                        id: 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                        name: name,
+                        category: category,
+                        contact: contact,
+                        totalAttendance: totalAttendance,
+                        lastAttended: lastAttended,
+                        notes: notes
+                    });
+                }
+                importedCount++;
+            });
+            saveDB();
+            alert(`Successfully imported/updated ${importedCount} records (missing fields were auto-filled safely)!`);
+        };
+        reader.readAsText(file);
+    }
+
+    applyBranding();
+    renderTable();
+
+</script>
+
+
+<script type="module">
+import {startBCCData,getBCCRecords,upsertBCCRecord,removeBCCRecord} from "./firebase-data.js";
+window.BCCStore = {
+  remove: removeBCCRecord,
+  syncAll(records){ records.forEach(r=>upsertBCCRecord(r)); }
+};
+function refreshStatus(source){
+  const el=document.querySelector(".offline-pill");
+  if(!el)return;
+  const online=navigator.onLine;
+  el.innerHTML=`<span class="offline-dot"></span>${online ? (source==="cloud"?"Firebase Synced":"Online • Syncing") : "Offline • Changes Saved"}`;
+}
+window.addEventListener("bcc-data",e=>{
+  db=e.detail.records || [];
+  renderTable(); refreshStatus(e.detail.source);
+});
+window.addEventListener("bcc-network",()=>refreshStatus("cache"));
+await startBCCData();
+refreshStatus("cache");
+if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(console.error);
+</script>
+
+
+<script>
+async function syncAttendeeToReminderBackend(attendee) {
+  const url = "https://script.google.com/macros/s/AKfycbygnbJ7Nml0qQR8e8oPzO8X7_q7Y7FtAVtswByRCnozABE0uUwNGBozhVMietTALK13Gw/exec";
+  if (!url || !attendee || !attendee.email || attendee.reminderConsent !== true) return;
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: {"Content-Type":"text/plain;charset=utf-8"},
+      body: JSON.stringify({
+        action: "syncAttendee",
+        attendee: {
+          id: attendee.id || "",
+          name: attendee.name || "",
+          email: attendee.email || "",
+          category: attendee.category || "",
+          contact: attendee.contact || "",
+          lastAttended: attendee.lastAttended || attendee.last_attended || "",
+          reminderEnabled: attendee.reminderConsent === true
+        }
+      })
+    });
+  } catch (e) {
+    console.warn("Reminder backend sync will retry on a future online registration.", e);
+  }
+}
+</script>
+
+</body>
+</html>
