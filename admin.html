@@ -51,33 +51,16 @@ nav a:focus-visible,.nav-signout:focus-visible,.auth-card button:focus-visible{o
 
 </head>
 <body>
-<div id="adminGate">
-      <div class="auth-card">
-        <img src="assets/bcc-logo.png" alt="BCC logo">
-        <h2>Baptist City Church</h2>
-        <p>Admin Dashboard Sign In</p>
-        <form id="adminLoginForm">
-          <label for="adminEmail" class="auth-label">Email address</label><input id="adminEmail" type="email" placeholder="Admin email" autocomplete="username" required>
-          <label for="adminPassword" class="auth-label">Password</label><div class="password-wrap">
-            <input id="adminPassword" type="password" placeholder="Password" autocomplete="current-password" required>
-            <button type="button" id="toggleAdminPassword" aria-label="Show password" aria-pressed="false">Show</button>
-          </div>
-          <button id="adminLoginBtn" type="submit">Sign In</button>
-        </form>
-        <div id="adminLoginMsg" role="alert" aria-live="polite">Loading secure sign-in…</div>
-      </div></div>
+
 <div class="shell">
 <aside>
  <div class="brand"><img src="assets/bcc-logo.png"><div><b>Baptist City Church</b><span>Attendance Admin</span></div></div>
  <nav>
   <a class="active" href="#dashboard" data-admin-nav="dashboard">Dashboard</a>
-  <a href="#records" data-admin-nav="records">Attendance Records</a>
-  <a href="#backup" data-admin-nav="backup">Backup & Data</a>
   <a href="invitation.html">Invitation Center</a>
-  <a href="index.html">Public Check-in Page</a>
   <button type="button" id="adminSignOutBtn" class="nav-signout" hidden>Sign Out</button>
  </nav>
- <div class="side-bottom">Offline-first • Data is stored on this device</div>
+ <div class="side-bottom">Baptist City Church • Administration</div>
 </aside>
 <main>
  <div class="top"><div><h1>Admin Dashboard</h1><p>Manage Baptist City Church attendance records.</p></div><button class="btn" onclick="openAdd()">+ Add Person</button></div>
@@ -142,7 +125,7 @@ function importCSV(e){let file=e.target.files[0];if(!file)return;let r=new FileR
 render();
 (function initAdminNavigation(){
   const links=[...document.querySelectorAll("[data-admin-nav]")];
-  const sections=["dashboard","records","backup"];
+  const sections=["dashboard"];
   function activate(){
     const current=sections.includes(location.hash.slice(1))?location.hash.slice(1):"dashboard";
     links.forEach(link=>{
@@ -161,20 +144,6 @@ render();
 })();
 </script>
 
-<script>
-(function(){
- const input=document.getElementById('adminPassword');
- const toggle=document.getElementById('toggleAdminPassword');
- if(!input||!toggle)return;
- toggle.addEventListener('click',()=>{
-  const visible=input.type==='password';
-  input.type=visible?'text':'password';
-  toggle.textContent=visible?'Hide':'Show';
-  toggle.setAttribute('aria-label',visible?'Hide password':'Show password');
-  toggle.setAttribute('aria-pressed',String(visible));
- });
-})();
-</script>
 <script type="module">
 import {startBCCData,upsertBCCRecord,removeBCCRecord,clearBCCRecords} from "./firebase-data.js";
 window.BCCStore={
@@ -235,12 +204,15 @@ function showGate(message="Admin sign in required.") {
         <div id="adminLoginMsg" role="alert" aria-live="polite">${message}</div>
       </div>`;
     document.body.appendChild(gate);
-  } else {
-    gate.style.display="flex";
-    document.getElementById("adminLoginMsg").textContent=message;
-  }
-  if (!gate.dataset.bound) {
-    gate.dataset.bound="true";
+    document.getElementById("toggleAdminPassword").addEventListener("click", () => {
+      const input=document.getElementById("adminPassword");
+      const toggle=document.getElementById("toggleAdminPassword");
+      const visible=input.type==="password";
+      input.type=visible?"text":"password";
+      toggle.textContent=visible?"Hide":"Show";
+      toggle.setAttribute("aria-label", visible?"Hide password":"Show password");
+      toggle.setAttribute("aria-pressed", String(visible));
+    });
     document.getElementById("adminLoginForm").addEventListener("submit", async event => {
       event.preventDefault();
       const email=document.getElementById("adminEmail").value.trim();
@@ -267,6 +239,9 @@ function showGate(message="Admin sign in required.") {
         button.disabled=false;
       }
     });
+  } else {
+    gate.style.display="flex";
+    document.getElementById("adminLoginMsg").textContent=message;
   }
 }
 
