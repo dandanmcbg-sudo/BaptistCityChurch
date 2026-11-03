@@ -29,7 +29,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:12px 10px;border-bottom:
 <script src="firebase-config.js"></script>
 
 <style>
-#adminBootStatus{position:fixed;z-index:99998;inset:0;display:flex;align-items:center;justify-content:center;background:#f6f2ec;color:#71675d;font-weight:600}body.admin-auth-ready #adminBootStatus{display:none}body:not(.admin-authorized) .shell{filter:blur(3px);pointer-events:none;user-select:none}
+body:not(.admin-authorized) .shell{filter:blur(3px);pointer-events:none;user-select:none}
 #adminGate{position:fixed;inset:0;z-index:99999;background:rgba(20,18,16,.72);display:flex;align-items:center;justify-content:center;padding:20px}
 .auth-card{width:min(390px,100%);background:#fffdfa;border:1px solid #e7ddd0;border-radius:20px;padding:28px;box-shadow:0 25px 70px rgba(0,0,0,.25);text-align:center}
 .auth-card img{width:74px;height:74px;border-radius:16px;object-fit:cover}
@@ -51,7 +51,21 @@ nav a:focus-visible,.nav-signout:focus-visible,.auth-card button:focus-visible{o
 
 </head>
 <body>
-<div id="adminBootStatus" role="status" aria-live="polite">Checking administrator access…</div>
+<div id="adminGate">
+      <div class="auth-card">
+        <img src="assets/bcc-logo.png" alt="BCC logo">
+        <h2>Baptist City Church</h2>
+        <p>Admin Dashboard Sign In</p>
+        <form id="adminLoginForm">
+          <label for="adminEmail" class="auth-label">Email address</label><input id="adminEmail" type="email" placeholder="Admin email" autocomplete="username" required>
+          <label for="adminPassword" class="auth-label">Password</label><div class="password-wrap">
+            <input id="adminPassword" type="password" placeholder="Password" autocomplete="current-password" required>
+            <button type="button" id="toggleAdminPassword" aria-label="Show password" aria-pressed="false">Show</button>
+          </div>
+          <button id="adminLoginBtn" type="submit">Sign In</button>
+        </form>
+        <div id="adminLoginMsg" role="alert" aria-live="polite">Loading secure sign-in…</div>
+      </div></div>
 <div class="shell">
 <aside>
  <div class="brand"><img src="assets/bcc-logo.png"><div><b>Baptist City Church</b><span>Attendance Admin</span></div></div>
@@ -147,6 +161,20 @@ render();
 })();
 </script>
 
+<script>
+(function(){
+ const input=document.getElementById('adminPassword');
+ const toggle=document.getElementById('toggleAdminPassword');
+ if(!input||!toggle)return;
+ toggle.addEventListener('click',()=>{
+  const visible=input.type==='password';
+  input.type=visible?'text':'password';
+  toggle.textContent=visible?'Hide':'Show';
+  toggle.setAttribute('aria-label',visible?'Hide password':'Show password');
+  toggle.setAttribute('aria-pressed',String(visible));
+ });
+})();
+</script>
 <script type="module">
 import {startBCCData,upsertBCCRecord,removeBCCRecord,clearBCCRecords} from "./firebase-data.js";
 window.BCCStore={
@@ -207,15 +235,12 @@ function showGate(message="Admin sign in required.") {
         <div id="adminLoginMsg" role="alert" aria-live="polite">${message}</div>
       </div>`;
     document.body.appendChild(gate);
-    document.getElementById("toggleAdminPassword").addEventListener("click", () => {
-      const input=document.getElementById("adminPassword");
-      const toggle=document.getElementById("toggleAdminPassword");
-      const visible=input.type==="password";
-      input.type=visible?"text":"password";
-      toggle.textContent=visible?"Hide":"Show";
-      toggle.setAttribute("aria-label", visible?"Hide password":"Show password");
-      toggle.setAttribute("aria-pressed", String(visible));
-    });
+  } else {
+    gate.style.display="flex";
+    document.getElementById("adminLoginMsg").textContent=message;
+  }
+  if (!gate.dataset.bound) {
+    gate.dataset.bound="true";
     document.getElementById("adminLoginForm").addEventListener("submit", async event => {
       event.preventDefault();
       const email=document.getElementById("adminEmail").value.trim();
@@ -242,9 +267,6 @@ function showGate(message="Admin sign in required.") {
         button.disabled=false;
       }
     });
-  } else {
-    gate.style.display="flex";
-    document.getElementById("adminLoginMsg").textContent=message;
   }
 }
 
