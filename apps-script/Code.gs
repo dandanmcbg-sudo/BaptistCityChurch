@@ -14,6 +14,8 @@
 const CHURCH_NAME = 'Baptist City Church';
 const TZ = 'Asia/Manila';
 const ATTENDEE_KEY = 'BCC_ATTENDEES_V1';
+const FIREBASE_API_KEY = 'AIzaSyBMFIhYLzGRP0SLmimUEMVJC1-30B27D_E';
+const ADMIN_UID = 'tSirLJ49mPTM2wo7kpmAxbqT7Rj2';
 
 function doGet() {
   return json_({ok:true, service:'BCC Attendance Reminder Backend'});
@@ -154,34 +156,75 @@ function buildSundayReminderHtml_(name) {
 
 /* ---------- EXISTING EVENT INVITATION SUPPORT ---------- */
 
+function verifyInvitationAdmin_(idToken) {
+  if (!idToken || typeof idToken !== 'string') throw new Error('Missing Firebase admin sign-in token.');
+  const endpoint = 'https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + encodeURIComponent(FIREBASE_API_KEY);
+  const response = UrlFetchApp.fetch(endpoint, {
+    method: 'post', contentType: 'application/json',
+    payload: JSON.stringify({idToken:idToken}), muteHttpExceptions:true
+  });
+  if (response.getResponseCode() !== 200) throw new Error('Admin login expired or token rejected. Sign in again.');
+  const result = JSON.parse(response.getContentText());
+  const account = (result.users || [])[0];
+  if (!account || account.localId !== ADMIN_UID || account.disabled) throw new Error('Not an authorized Baptist City Church administrator.');
+  return account.localId;
+}
+
 function sendInvitations_(data) {
+  verifyInvitationAdmin_(data.idToken);
   const event = data.event || {};
   const recipients = Array.isArray(data.recipients) ? data.recipients : [];
-  if (!event.name || !recipients.length)
-    return {ok:false,message:'Event and recipients are required.'};
-
-  let sent = 0, failed = 0;
-  recipients.forEach(r => {
-    try {
-      if (!isEmail_(r.email)) throw new Error('Invalid email');
-      const t = HtmlService.createTemplateFromFile('Invitation');
-      t.personName = r.name || 'Friend';
-      t.eventName = event.name || 'Baptist City Church Event';
-      t.eventDate = event.date || '';
-      t.eventTime = event.time || '';
-      t.venue = event.venue || CHURCH_NAME;
-      t.message = event.message || 'We would love to have you join us.';
-      t.rsvp = event.rsvp || '';
-      MailApp.sendEmail({
-        to:r.email,
-        subject:'You’re Invited — ' + event.name,
-        htmlBody:t.evaluate().getContent(),
-        name:CHURCH_NAME
-      });
-      sent++;
-    } catch(err) { failed++; }
-  });
-  return {ok:true,sent:sent,failed:failed,message:`Sent: ${sent}, Failed: ${failed}`};
+  const requestId = String(data.requestId || '');
+  if (!/^[a-zA-Z0-9_-]{8,100}$/.test(requestId)) throw new Error('Missing valid invitation request ID.');
+  if (!String(event.name || '').trim() || !String(event.date || '').trim())
+    throw new Error('Event name and date are required.');
+  if (!recipients.length || recipients.length > 100) throw new Error('Select between 1 and 100 recipients per batch.');
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Another invitation batch is processing. Try again later.');
+  try {
+    const cache = CacheService.getScriptCache();
+    const cacheKey = 'BCC_INV_' + requestId;
+    if (cache.get(cacheKey)) return {ok:false, message:'Duplicate batch blocked. Check previous delivery in Executions.'};
+    cache.put(cacheKey, 'processing', 21600);
+    const unique = {};
+    const list = recipients.filter(r => {
+      const email = String(r.email || '').trim().toLowerCase();
+      if (!isEmail_(email) || unique[email]) return false;
+      unique[email] = true;
+      return true;
+    });
+    if (MailApp.getRemainingDailyQuota() < list.length) {
+      cache.remove(cacheKey);
+      throw new Error('Gmail daily recipient quota is insufficient for this batch.');
+    }
+    let sent = 0, failed = 0;
+    const failures = [];
+    list.forEach(r => {
+      try {
+        const t = HtmlService.createTemplateFromFile('Invitation');
+        t.personName = String(r.name || 'Friend').slice(0,150);
+        t.eventName = String(event.name).slice(0,150);
+        t.eventDate = String(event.date || '').slice(0,30);
+        t.eventTime = String(event.time || '').slice(0,30);
+        t.venue = String(event.venue || CHURCH_NAME).slice(0,200);
+        t.message = String(event.message || 'We would love to have you join us.').slice(0,3000);
+        t.rsvp = /^https:\/\//.test(String(event.rsvp || '')) ? event.rsvp : '';
+        MailApp.sendEmail({
+          to:String(r.email).trim(),
+          subject:'You’re Invited — ' + String(event.name).slice(0,150),
+          body:'Baptist City Church invites you to ' + event.name + ' on ' + event.date + '. ' + (event.venue || CHURCH_NAME),
+          htmlBody:t.evaluate().getContent(),
+          name:CHURCH_NAME
+        });
+        sent++;
+      } catch(err) {
+        failed++;
+        failures.push(String(r.email || '') + ': ' + String(err.message || err));
+      }
+    });
+    Logger.log(JSON.stringify({action:'sendInvitations',requestId,sent,failed,failures}));
+    return {ok:failed===0, sent, failed, message:'Sent: '+sent+', Failed: '+failed};
+  } finally { lock.releaseLock(); }
 }
 
 /* ---------- HELPERS ---------- */

@@ -88,18 +88,20 @@ async function send(recs){
   if(!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(url))return show("Enter a valid deployed Google Apps Script /exec URL.");
   if(!eventName.value.trim()||!eventDate.value)return show("Enter the event name and date first.");
   if(!recs.length)return show("Select at least one opted-in recipient.");
-  const unique=[...new Map(recs.filter(r=>r.email).map(r=>[r.email.trim().toLowerCase(),r])).values()];
+  const unique=[...new Map(recs.filter(r=>r.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email)).map(r=>[r.email.trim().toLowerCase(),r])).values()];
+  if (!unique.length) return show("No valid recipient email addresses selected.");
+  if (unique.length > 100) return show("Send at most 100 recipients per batch.");
   if(!confirm(`Submit ${unique.length} invitation(s) to the church email service?`))return;
   sending=true;sendBtn.disabled=true;testBtn.disabled=true;show("Sending invitations…");
   try{
     const user=getAuth(getApps()[0]).currentUser;
     if(!user || user.uid!==ADMIN_UID) throw new Error("Admin session expired. Please sign in again.");
     const idToken=await user.getIdToken();
-    const request={...payload(unique),idToken};
+    const request={...payload(unique),idToken,requestId:crypto.randomUUID().replaceAll("-","")};
     // Google Apps Script ContentService redirects responses to a different origin.
     // A no-cors request avoids misleading browser CORS errors, but cannot confirm delivery.
     await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(request)});
-    show("Request submitted. Delivery is NOT confirmed here. Check Google Apps Script → Executions and the sender's Sent mail. Do not retry until verified.");
+    show("Invitation batch submitted (reference: " + request.requestId + "). Delivery cannot be confirmed from this browser. Verify the result in Apps Script → Executions and the sender’s Sent folder before retrying.");
   }catch(error){
     console.error("BCC invitation delivery:",error);
     show("Request failed before confirmation: " + (error.message||"Unknown error") + ". Check the Apps Script deployment and Executions log.");
