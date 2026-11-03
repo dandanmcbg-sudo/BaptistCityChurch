@@ -274,6 +274,18 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
 
 <link rel="manifest" href="manifest.webmanifest">
 <script src="firebase-config.js"></script>
+<style>
+.bcc-tabs{display:flex;gap:10px;margin:20px 0 12px;flex-wrap:wrap}
+.bcc-tab{background:#e9e2d8;color:#28231e;border:1px solid #ded2c3;padding:12px 18px;border-radius:12px}
+.bcc-tab.active{background:#171717;color:#fff}
+.bcc-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:end}
+.bcc-fields .form-group{min-width:0}.bcc-fields input,.bcc-fields select,.bcc-fields textarea{width:100%;min-width:0;box-sizing:border-box;min-height:42px}
+.bcc-wide{grid-column:1/-1}.bcc-consent{display:flex;align-items:flex-start;gap:10px;line-height:1.5}.bcc-consent input{width:18px!important;min-height:auto!important;margin:3px 0 0}
+.bcc-help{font-size:.9rem;color:#70675d;margin:0 0 18px}.bcc-feedback{font-size:.9rem;margin:12px 0 0}
+[hidden]{display:none!important}
+@media(max-width:780px){.bcc-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.bcc-fields{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
 
@@ -287,46 +299,40 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         </div><div style="margin-left:auto;display:flex;gap:8px;align-items:center;"><a href="admin.html" style="text-decoration:none;background:#171717;color:white;padding:10px 14px;border-radius:10px;font-size:.82rem;font-weight:700;">Admin Dashboard</a><div class="offline-pill" style="margin-left:0"><span class="offline-dot"></span>Offline Ready</div></div>
     </header>
 
-    <!-- Sunday Check-in Form -->
-    <div class="card">
-        <h3>Sunday Check-in</h3><div class="empty-note">Records are saved on this device, so this page can be used without internet.</div>
-        <form id="attendanceForm" class="form-grid">
-            <div class="form-group">
-                <label>Full Name</label>
-                <input type="text" id="fullName" required placeholder="Type attendee name...">
-            </div>
-            <div class="form-group">
-                <label>Category</label>
-                <select id="category">
-                    <option value="Member">Member</option>
-                    <option value="Visitor">Visitor</option>
-                    <option value="Guest">Guest</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Email Address</label>
-                <input type="email" id="email" placeholder="name@example.com">
-            </div>
-            <div class="form-group">
-                <label>Contact Number</label>
-                <input type="text" id="contact" placeholder="e.g. 09123456789">
-            </div>
-            <div class="form-group">
-                <label>Initial Attendance</label>
-                <input type="number" id="initialCount" value="1" min="0">
-            </div>
-
-            <div class="form-group"><label>Ministry / Department (optional)</label><select id="ministry"><option value="">Select ministry</option><option>Youth Ministry</option><option>Music Ministry</option><option>Ushering</option><option>Children's Ministry</option><option>Prayer Ministry</option><option>Other</option><option>None</option></select></div>
-            <div class="form-group"><label>First-time Visitor?</label><select id="firstTimeVisitor"><option value="No">No</option><option value="Yes">Yes</option></select></div>
-            <div class="form-group"><label>Invited By (optional)</label><input id="invitedBy" placeholder="Name of person who invited you"></div>
-            <div class="form-group"><label>Preferred Contact Method</label><select id="contactMethod"><option value="">Not specified</option><option>Email</option><option>SMS</option><option>Phone Call</option></select></div>
-            <div class="form-group"><label>Birthday (optional)</label><input id="birthday" type="date"></div>
-            <div class="form-group" style="grid-column:1/-1"><label>Prayer Request (optional, for church leaders only)</label><textarea id="prayerRequest" rows="2" placeholder="Share only what you are comfortable sharing"></textarea></div>
-            <div class="form-group" style="grid-column:1/-1"><label style="display:flex;align-items:flex-start;gap:9px;font-weight:500"><input id="reminderConsent" type="checkbox" style="width:auto;margin-top:3px"> I agree to receive Sunday reminders and church event invitations by email. I can opt out later.</label></div>
-            <button type="submit" id="submitBtn">Record Check-in</button>
-        </form>
+    <!-- Separate attendance check-in from new attendee registration -->
+    <div class="bcc-tabs" role="tablist" aria-label="Attendance actions">
+      <button type="button" class="bcc-tab active" id="checkinTab" onclick="switchBCCForm('checkin')">Sunday Check-in</button>
+      <button type="button" class="bcc-tab" id="createTab" onclick="switchBCCForm('create')">Create Attendee Record</button>
     </div>
-
+    <div class="card" id="checkinPanel">
+      <h3>Sunday Check-in</h3>
+      <p class="bcc-help">For existing attendees. Search and select a saved attendee to record today's attendance. No need to re-enter their personal information.</p>
+      <form id="quickCheckinForm" class="bcc-fields">
+        <div class="form-group"><label for="checkinPerson">Find attendee</label><input id="checkinPerson" list="checkinNames" placeholder="Start typing attendee name..." required autocomplete="off"><datalist id="checkinNames"></datalist></div>
+        <div class="form-group"><label for="checkinDate">Attendance date</label><input id="checkinDate" type="date" required></div>
+        <button type="submit">Mark Present</button>
+      </form>
+      <p id="checkinFeedback" class="bcc-feedback" aria-live="polite"></p>
+    </div>
+    <div class="card" id="createPanel" hidden>
+      <h3>Create Attendee Record</h3>
+      <p class="bcc-help">Use this form only when adding a new member, visitor, or guest. The attendance check-in is handled separately.</p>
+      <form id="attendanceForm" class="bcc-fields">
+        <div class="form-group"><label for="fullName">Full Name *</label><input type="text" id="fullName" required placeholder="Type attendee name..."></div>
+        <div class="form-group"><label for="category">Category</label><select id="category"><option>Member</option><option>Visitor</option><option>Guest</option></select></div>
+        <div class="form-group"><label for="email">Email Address</label><input type="email" id="email" placeholder="name@example.com"></div>
+        <div class="form-group"><label for="contact">Contact Number</label><input id="contact" placeholder="e.g. 09123456789"></div>
+        <div class="form-group"><label for="ministry">Ministry / Department</label><select id="ministry"><option value="">Select ministry</option><option>Youth Ministry</option><option>Music Ministry</option><option>Ushering</option><option>Children's Ministry</option><option>Prayer Ministry</option><option>Other</option><option>None</option></select></div>
+        <div class="form-group"><label for="firstTimeVisitor">First-time Visitor?</label><select id="firstTimeVisitor"><option>No</option><option>Yes</option></select></div>
+        <div class="form-group"><label for="invitedBy">Invited By (optional)</label><input id="invitedBy" placeholder="Name of person who invited you"></div>
+        <div class="form-group"><label for="contactMethod">Preferred Contact Method</label><select id="contactMethod"><option value="">Not specified</option><option>Email</option><option>SMS</option><option>Phone Call</option></select></div>
+        <div class="form-group"><label for="birthday">Birthday (optional)</label><input id="birthday" type="date"></div>
+        <div class="form-group bcc-wide"><label for="prayerRequest">Prayer Request (optional, church leaders only)</label><textarea id="prayerRequest" rows="3" placeholder="Share only what you are comfortable sharing"></textarea></div>
+        <label class="bcc-wide bcc-consent"><input id="reminderConsent" type="checkbox"> I agree to receive Sunday reminders and church event invitations by email. I can opt out later.</label>
+        <div class="bcc-wide"><button type="submit" id="submitBtn">Create Record</button></div>
+      </form>
+      <p id="createFeedback" class="bcc-feedback" aria-live="polite"></p>
+    </div>
     <!-- Master Directory Table -->
     <div class="card">
         <div class="card-header-flex">
@@ -461,50 +467,83 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         });
     }
 
+    function bccTodayLocal() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+    function switchBCCForm(view) {
+      document.getElementById('checkinPanel').hidden = view !== 'checkin';
+      document.getElementById('createPanel').hidden = view !== 'create';
+      document.getElementById('checkinTab').classList.toggle('active', view === 'checkin');
+      document.getElementById('createTab').classList.toggle('active', view === 'create');
+      if(view === 'checkin') refreshBCCNames();
+    }
+    function refreshBCCNames() {
+      const list = document.getElementById('checkinNames');
+      if (!list) return;
+      list.replaceChildren();
+      db.forEach(person => {
+        const opt = document.createElement('option');
+        opt.value = person.name;
+        list.appendChild(opt);
+      });
+    }
+    document.getElementById('checkinDate').value = bccTodayLocal();
+    document.getElementById('quickCheckinForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const name = document.getElementById('checkinPerson').value.trim();
+      const date = document.getElementById('checkinDate').value;
+      const feedback = document.getElementById('checkinFeedback');
+      const matches = db.filter(p => p.name.toLowerCase() === name.toLowerCase());
+      if(matches.length !== 1) {
+        feedback.textContent = matches.length ? 'Multiple records match this name. Please ask the admin to resolve duplicates.' : 'Attendee not found. Create an attendee record first.';
+        return;
+      }
+      const person = matches[0];
+      person.totalAttendance = (Number(person.totalAttendance) || 0) + 1;
+      person.lastAttended = date;
+      saveDB();
+      refreshBCCNames();
+      feedback.textContent = `${person.name} marked present for ${date}.`;
+      this.reset();
+      document.getElementById('checkinDate').value = bccTodayLocal();
+    });
     document.getElementById('attendanceForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        const name = document.getElementById('fullName').value.trim();
-        const category = document.getElementById('category').value;
-        const email = document.getElementById('email').value.trim();
-        const contact = document.getElementById('contact').value.trim();
-        const ministry = document.getElementById('ministry').value;
-        const firstTimeVisitor = document.getElementById('firstTimeVisitor').value === 'Yes';
-        const invitedBy = document.getElementById('invitedBy').value.trim();
-        const contactMethod = document.getElementById('contactMethod').value;
-        const birthday = document.getElementById('birthday').value;
-        const prayerRequest = document.getElementById('prayerRequest').value.trim();
-        const reminderConsent = document.getElementById('reminderConsent').checked;
-        const extra = {ministry,firstTimeVisitor,invitedBy,contactMethod,birthday,prayerRequest,reminderConsent,reminderEnabled:reminderConsent};
-        const initialCount = parseInt(document.getElementById('initialCount').value, 10) || 1;
-        const today = new Date().toISOString().split('T')[0];
-
-        const existing = db.find(p => p.name.toLowerCase() === name.toLowerCase());
-
-        if (existing) {
-            existing.totalAttendance += 1;
-            existing.lastAttended = today;
-            Object.assign(existing,extra);
-            if (email) existing.email = email;
-            if (contact) existing.contact = contact;
-        } else {
-            db.push({
-                id: 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-                name: name,
-                category: category,
-                email: email,
-                ...extra,
-                contact: contact,
-                totalAttendance: initialCount,
-                lastAttended: today,
-                notes: ''
-            });
-        }
-
-        const savedPerson = db.find(p => p.name.toLowerCase() === name.toLowerCase());
-        if (savedPerson && savedPerson.reminderConsent === true) syncAttendeeToReminderBackend(savedPerson);
-        this.reset();
-        document.getElementById('initialCount').value = 1;
-        saveDB();
+      e.preventDefault();
+      const name = document.getElementById('fullName').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const feedback = document.getElementById('createFeedback');
+      if(!name) return;
+      if(db.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+        feedback.textContent = 'This name already exists. Use Sunday Check-in instead, or ask admin to edit the existing record.';
+        return;
+      }
+      const reminderConsent = document.getElementById('reminderConsent').checked;
+      if(reminderConsent && !email) {
+        feedback.textContent = 'Enter an email address if you want email reminders, or uncheck email consent.';
+        return;
+      }
+      const person = {
+        id:'id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+        name,
+        category:document.getElementById('category').value,
+        email,
+        contact:document.getElementById('contact').value.trim(),
+        ministry:document.getElementById('ministry').value,
+        firstTimeVisitor:document.getElementById('firstTimeVisitor').value === 'Yes',
+        invitedBy:document.getElementById('invitedBy').value.trim(),
+        contactMethod:document.getElementById('contactMethod').value,
+        birthday:document.getElementById('birthday').value,
+        prayerRequest:document.getElementById('prayerRequest').value.trim(),
+        reminderConsent,reminderEnabled:reminderConsent,
+        totalAttendance:0,lastAttended:'',notes:''
+      };
+      db.push(person);
+      saveDB();
+      if(reminderConsent && email && typeof syncAttendeeToReminderBackend === 'function') syncAttendeeToReminderBackend(person);
+      this.reset();
+      feedback.textContent = `${name} created. Use Sunday Check-in to mark attendance.`;
+      refreshBCCNames();
     });
 
     function deleteRecord(id) {

@@ -1,11 +1,8 @@
-// Baptist City Church Attendance — Firebase configuration
-// Replace ONLY the values below with your Firebase Web App config.
-// Firebase Console > Project settings > Your apps > Web app > SDK setup and configuration.
 window.BCC_FIREBASE_CONFIG = {
-  apiKey: "PASTE_API_KEY_HERE",
-  authDomain: "PASTE_PROJECT_ID.firebaseapp.com",
-  projectId: "PASTE_PROJECT_ID",
-  storageBucket: "PASTE_PROJECT_ID.firebasestorage.app",
-  messagingSenderId: "PASTE_MESSAGING_SENDER_ID",
-  appId: "PASTE_APP_ID"
+  apiKey: "AIzaSyBMFIhYLzGRP0SLmimUEMVJC1-30B27D_E",
+  authDomain: "baptistcitychurch-4491f.firebaseapp.com",
+  projectId: "baptistcitychurch-4491f",
+  storageBucket: "baptistcitychurch-4491f.firebasestorage.app",
+  messagingSenderId: "711255633147",
+  appId: "1:711255633147:web:c10b3a8f3896f7e672545e"
 };
