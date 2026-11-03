@@ -1,243 +1,98 @@
-/**
- * Baptist City Church — Attendance Reminder Backend
- *
- * SETUP:
- * 1) Apps Script > Project Settings > Time zone = Asia/Manila
- * 2) Run setupSundayReminderTrigger() ONCE and authorize.
- * 3) The trigger runs every Saturday around 8:00 AM PH time.
- *
- * DATA SOURCE:
- * The website sends attendee data to this Apps Script using action: "syncAttendee".
- * Email addresses are stored in Apps Script Properties (server side).
+/** Baptist City Church — Google Sheets invitation manager.
+ * Run setupBCCSheets() once; deploy as Web App: Execute as Me, Access Anyone.
+ * All sensitive calls require a Firebase ID token verified server-side.
+ * Website attendance/Firebase records remain unchanged.
  */
-
-const CHURCH_NAME = 'Baptist City Church';
-const TZ = 'Asia/Manila';
-const ATTENDEE_KEY = 'BCC_ATTENDEES_V1';
-const FIREBASE_API_KEY = 'AIzaSyBMFIhYLzGRP0SLmimUEMVJC1-30B27D_E';
-const ADMIN_UID = 'tSirLJ49mPTM2wo7kpmAxbqT7Rj2';
-
-function doGet() {
-  return json_({ok:true, service:'BCC Attendance Reminder Backend'});
+const BCC = {
+  projectId: 'baptistcitychurch-4491f',
+  apiKey: 'AIzaSyBMFIhYLzGRP0SLmimUEMVJC1-30B27D_E',
+  adminUid: 'tSirLJ49mPTM2wo7kpmAxbqT7Rj2',
+  timezone: 'Asia/Manila',
+  sheetProperty: 'BCC_SHEET_ID',
+  tab: 'Attendees'
+};
+function setupBCCSheets() {
+  const props=PropertiesService.getScriptProperties();
+  let id=props.getProperty(BCC.sheetProperty);
+  if(!id){const ss=SpreadsheetApp.create('Baptist City Church - Email Recipients');id=ss.getId();props.setProperty(BCC.sheetProperty,id)}
+  const ss=SpreadsheetApp.openById(id);
+  let sh=ss.getSheetByName(BCC.tab)||ss.insertSheet(BCC.tab);
+  if(sh.getLastRow()===0)sh.appendRow(['ID','Name','Email','Category','Email Consent','Reminder Enabled','Updated At']);
+  Logger.log('Google Sheet: '+ss.getUrl());
+  return ss.getUrl();
 }
-
-function doPost(e) {
-  try {
-    const data = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-
-    if (data.action === 'syncAttendee') {
-      return json_(syncAttendee_(data.attendee || {}));
-    }
-
-    if (data.action === 'sendInvitations') {
-      return json_(sendInvitations_(data));
-    }
-
-    return json_({ok:false, message:'Unknown action.'});
-  } catch (err) {
-    return json_({ok:false, message:String(err && err.message || err)});
-  }
+function sheet_(){const id=PropertiesService.getScriptProperties().getProperty(BCC.sheetProperty);if(!id)throw Error('Run setupBCCSheets() first.');return SpreadsheetApp.openById(id).getSheetByName(BCC.tab)}
+function verify_(token){
+  if(!token||typeof token!=='string')throw Error('Please sign in as the church administrator.');
+  // Firebase Identity Toolkit verifies the ID token signature, expiry and Firebase project.
+  const url='https://identitytoolkit.googleapis.com/v1/accounts:lookup?key='+encodeURIComponent(BCC.apiKey);
+  const r=UrlFetchApp.fetch(url,{method:'post',contentType:'application/json',payload:JSON.stringify({idToken:token}),muteHttpExceptions:true});
+  if(r.getResponseCode()!==200)throw Error('Admin authentication expired or invalid.');
+  const user=(JSON.parse(r.getContentText()).users||[])[0];
+  if(!user||user.localId!==BCC.adminUid)throw Error('This account is not an authorized administrator.');
+  return user;
 }
-
-/* ---------- ATTENDEE STORAGE ---------- */
-
-function getAttendees_() {
-  const raw = PropertiesService.getScriptProperties().getProperty(ATTENDEE_KEY);
-  return raw ? JSON.parse(raw) : [];
+function api_(action,data,token){
+  verify_(token);
+  if(action==='list')return {ok:true,recipients:read_()};
+  if(action==='sync')return sync_(data.records||[]);
+  if(action==='send')return send_(data);
+  throw Error('Unsupported action');
 }
-
-function saveAttendees_(rows) {
-  PropertiesService.getScriptProperties()
-    .setProperty(ATTENDEE_KEY, JSON.stringify(rows));
+function read_(){
+  const values=sheet_().getDataRange().getValues();
+  return values.slice(1).filter(r=>r[2]&&r[4]===true).map(r=>({id:String(r[0]),name:String(r[1]),email:String(r[2]),category:String(r[3])}));
 }
-
-function syncAttendee_(a) {
-  const email = String(a.email || '').trim().toLowerCase();
-  if (!email || !isEmail_(email)) {
-    return {ok:false, message:'A valid attendee email is required.'};
-  }
-
-  const rows = getAttendees_();
-  const now = new Date().toISOString();
-  const i = rows.findIndex(x => String(x.email || '').toLowerCase() === email);
-
-  const record = {
-    id: a.id || (i >= 0 ? rows[i].id : Utilities.getUuid()),
-    name: String(a.name || (i >= 0 ? rows[i].name : '')).trim(),
-    email: email,
-    category: String(a.category || (i >= 0 ? rows[i].category : '')).trim(),
-    contact: String(a.contact || (i >= 0 ? rows[i].contact : '')).trim(),
-    lastAttended: a.lastAttended || (i >= 0 ? rows[i].lastAttended : ''),
-    reminderEnabled: a.reminderEnabled !== false,
-    updatedAt: now
-  };
-
-  if (i >= 0) rows[i] = Object.assign({}, rows[i], record);
-  else rows.push(record);
-
-  saveAttendees_(rows);
-  return {ok:true, message:'Attendee synced to reminder backend.'};
-}
-
-/* ---------- AUTOMATIC SUNDAY REMINDER ---------- */
-
-function setupSundayReminderTrigger() {
-  // Avoid duplicate reminder triggers.
-  ScriptApp.getProjectTriggers().forEach(t => {
-    if (t.getHandlerFunction() === 'runSundayReminder') {
-      ScriptApp.deleteTrigger(t);
-    }
+function sync_(records){
+  if(!Array.isArray(records)||records.length>500)throw Error('Maximum 500 records per batch.');
+  const sh=sheet_(),values=sh.getDataRange().getValues();
+  const index=new Map(values.slice(1).map((r,i)=>[String(r[2]).toLowerCase(),i+2]));
+  let updated=0,created=0;
+  records.forEach(a=>{
+    const email=String(a.email||'').trim().toLowerCase();
+    if(!emailValid_(email))return;
+    const consent=a.reminderConsent===true || a.reminderEnabled===true;
+    const row=[String(a.id||''),String(a.name||'').slice(0,150),email,String(a.category||''),consent,a.reminderEnabled!==false,new Date()];
+    const existing=index.get(email);
+    if(existing){sh.getRange(existing,1,1,7).setValues([row]);updated++}
+    else{sh.appendRow(row);index.set(email,sh.getLastRow());created++}
   });
-
-  // Saturday 8 AM Manila time. Apps Script time triggers run within the hour.
-  ScriptApp.newTrigger('runSundayReminder')
-    .timeBased()
-    .onWeekDay(ScriptApp.WeekDay.SATURDAY)
-    .atHour(8)
-    .inTimezone(TZ)
-    .create();
-
-  return 'Saturday reminder trigger created.';
+  return {ok:true,created,updated};
 }
-
-function runSundayReminder() {
-  const now = new Date();
-
-  // Safety guard: only send on Saturday in Manila.
-  if (Utilities.formatDate(now, TZ, 'u') !== '6') return;
-
-  const attendees = getAttendees_()
-    .filter(a => a.reminderEnabled !== false && isEmail_(a.email));
-
-  let sent = 0, failed = 0;
-
-  attendees.forEach(a => {
-    try {
-      const firstName = String(a.name || 'Friend').trim().split(/\s+/)[0];
-      const subject = 'See you tomorrow at Baptist City Church';
-      const html = buildSundayReminderHtml_(firstName);
-
-      MailApp.sendEmail({
-        to: a.email,
-        subject: subject,
-        htmlBody: html,
-        name: CHURCH_NAME
-      });
+function send_(data){
+  const event=data.event||{}, requested=Array.isArray(data.recipientIds)?data.recipientIds:[];
+  const eventName=String(event.name||'').trim().slice(0,120);
+  if(!eventName||!event.date)throw Error('Event name and date required.');
+  if(!requested.length||requested.length>100)throw Error('Select 1–100 recipients.');
+  const requestId=String(data.requestId||'').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,80);
+  if(!requestId)throw Error('Request ID required.');
+  const lock=LockService.getScriptLock();lock.waitLock(15000);
+  try{
+    const props=PropertiesService.getScriptProperties(),key='BCC_SENT_'+requestId;
+    if(props.getProperty(key))return {ok:false,message:'This request was already processed. Check the Sent folder.'};
+    props.setProperty(key,new Date().toISOString());
+  }finally{lock.releaseLock()}
+  const allowed=new Map(read_().map(x=>[x.id,x]));
+  const chosen=[...new Set(requested.map(String))].map(id=>allowed.get(id)).filter(Boolean);
+  if(!chosen.length)throw Error('No opted-in recipients found in Google Sheets.');
+  if(MailApp.getRemainingDailyQuota()<chosen.length)throw Error('Insufficient email quota today.');
+  let sent=0,failed=0;
+  chosen.forEach(person=>{
+    try{
+      MailApp.sendEmail({to:person.email,subject:'You’re Invited — '+eventName,body:'You are invited to '+eventName+' at Baptist City Church.',htmlBody:email_(person,event),name:'Baptist City Church'});
       sent++;
-    } catch (err) {
-      failed++;
-      console.error('Reminder failed for ' + a.email, err);
-    }
+    }catch(e){failed++;console.error('Delivery failed to '+person.email+': '+e.message)}
   });
-
-  console.log('BCC Sunday reminders — sent: ' + sent + ', failed: ' + failed);
+  return {ok:true,sent,failed,message:'Sent: '+sent+'; failed: '+failed};
 }
-
-function buildSundayReminderHtml_(name) {
-  return `
-  <div style="margin:0;background:#f4efe7;padding:30px 12px;font-family:Arial,sans-serif;color:#171717">
-    <div style="max-width:600px;margin:auto;background:#fffdfa;border-radius:16px;overflow:hidden;border:1px solid #e7ddd0">
-      <div style="background:#171717;color:white;text-align:center;padding:28px">
-        <div style="font-size:12px;letter-spacing:2px">${CHURCH_NAME.toUpperCase()}</div>
-        <h1 style="margin:10px 0 0;font-size:26px">Sunday Reminder</h1>
-      </div>
-      <div style="padding:30px;line-height:1.7">
-        <p>Hello ${escapeHtml_(name)},</p>
-        <p>Just a friendly reminder that tomorrow is Sunday. We would love to see you at <b>${CHURCH_NAME}</b>.</p>
-        <div style="background:#f5efe6;border-radius:12px;padding:18px;margin:20px 0">
-          Don’t forget to join us tomorrow for worship and fellowship.
-        </div>
-        <p>See you at church! God bless you.</p>
-        <p>With love,<br><b>${CHURCH_NAME}</b></p>
-      </div>
-    </div>
-  </div>`;
+function email_(p,e){
+  const x=escape_;const link=/^https:\/\//.test(String(e.rsvp||''))?'<p><a href="'+x(e.rsvp)+'">Event details / RSVP</a></p>':'';
+  return '<div style="font-family:Arial,sans-serif;background:#f4efe7;padding:24px"><div style="max-width:580px;margin:auto;background:white;padding:28px;border-radius:14px"><h1>Baptist City Church</h1><h2>You’re Invited!</h2><p>Hello '+x(p.name||'Friend')+',</p><p>'+x(e.message||'We would love to see you!')+'</p><p><strong>'+x(e.name)+'</strong></p><p>'+x(e.date)+' · '+x(e.time||'')+'</p><p>'+x(e.venue||'Baptist City Church')+'</p>'+link+'<blockquote>“I was glad when they said unto me, Let us go into the house of the LORD.” — Psalm 122:1 (KJV)</blockquote><p>With love,<br>Baptist City Church</p></div></div>';
 }
-
-/* ---------- EXISTING EVENT INVITATION SUPPORT ---------- */
-
-function verifyInvitationAdmin_(idToken) {
-  if (!idToken || typeof idToken !== 'string') throw new Error('Missing Firebase admin sign-in token.');
-  const endpoint = 'https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + encodeURIComponent(FIREBASE_API_KEY);
-  const response = UrlFetchApp.fetch(endpoint, {
-    method: 'post', contentType: 'application/json',
-    payload: JSON.stringify({idToken:idToken}), muteHttpExceptions:true
-  });
-  if (response.getResponseCode() !== 200) throw new Error('Admin login expired or token rejected. Sign in again.');
-  const result = JSON.parse(response.getContentText());
-  const account = (result.users || [])[0];
-  if (!account || account.localId !== ADMIN_UID || account.disabled) throw new Error('Not an authorized Baptist City Church administrator.');
-  return account.localId;
-}
-
-function sendInvitations_(data) {
-  verifyInvitationAdmin_(data.idToken);
-  const event = data.event || {};
-  const recipients = Array.isArray(data.recipients) ? data.recipients : [];
-  const requestId = String(data.requestId || '');
-  if (!/^[a-zA-Z0-9_-]{8,100}$/.test(requestId)) throw new Error('Missing valid invitation request ID.');
-  if (!String(event.name || '').trim() || !String(event.date || '').trim())
-    throw new Error('Event name and date are required.');
-  if (!recipients.length || recipients.length > 100) throw new Error('Select between 1 and 100 recipients per batch.');
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) throw new Error('Another invitation batch is processing. Try again later.');
-  try {
-    const cache = CacheService.getScriptCache();
-    const cacheKey = 'BCC_INV_' + requestId;
-    if (cache.get(cacheKey)) return {ok:false, message:'Duplicate batch blocked. Check previous delivery in Executions.'};
-    cache.put(cacheKey, 'processing', 21600);
-    const unique = {};
-    const list = recipients.filter(r => {
-      const email = String(r.email || '').trim().toLowerCase();
-      if (!isEmail_(email) || unique[email]) return false;
-      unique[email] = true;
-      return true;
-    });
-    if (MailApp.getRemainingDailyQuota() < list.length) {
-      cache.remove(cacheKey);
-      throw new Error('Gmail daily recipient quota is insufficient for this batch.');
-    }
-    let sent = 0, failed = 0;
-    const failures = [];
-    list.forEach(r => {
-      try {
-        const t = HtmlService.createTemplateFromFile('Invitation');
-        t.personName = String(r.name || 'Friend').slice(0,150);
-        t.eventName = String(event.name).slice(0,150);
-        t.eventDate = String(event.date || '').slice(0,30);
-        t.eventTime = String(event.time || '').slice(0,30);
-        t.venue = String(event.venue || CHURCH_NAME).slice(0,200);
-        t.message = String(event.message || 'We would love to have you join us.').slice(0,3000);
-        t.rsvp = /^https:\/\//.test(String(event.rsvp || '')) ? event.rsvp : '';
-        MailApp.sendEmail({
-          to:String(r.email).trim(),
-          subject:'You’re Invited — ' + String(event.name).slice(0,150),
-          body:'Baptist City Church invites you to ' + event.name + ' on ' + event.date + '. ' + (event.venue || CHURCH_NAME),
-          htmlBody:t.evaluate().getContent(),
-          name:CHURCH_NAME
-        });
-        sent++;
-      } catch(err) {
-        failed++;
-        failures.push(String(r.email || '') + ': ' + String(err.message || err));
-      }
-    });
-    Logger.log(JSON.stringify({action:'sendInvitations',requestId,sent,failed,failures}));
-    return {ok:failed===0, sent, failed, message:'Sent: '+sent+', Failed: '+failed};
-  } finally { lock.releaseLock(); }
-}
-
-/* ---------- HELPERS ---------- */
-
-function isEmail_(v) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
-}
-function escapeHtml_(s) {
-  return String(s || '').replace(/[&<>"']/g, c => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-  }[c]));
-}
-function json_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+function escape_(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function emailValid_(s){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)}
+function doGet(){return HtmlService.createHtmlOutputFromFile('Manager').setTitle('BCC Invitation Manager')}
+// No public POST endpoint: sensitive operations use authenticated google.script.run calls.
+function listRecipients(token){return api_('list',{},token)}
+function syncRecipients(records,token){return api_('sync',{records},token)}
+function sendInvitations(event,recipientIds,requestId,token){return api_('send',{event,recipientIds,requestId},token)}
