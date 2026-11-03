@@ -55,7 +55,7 @@ label{font-size:.78rem;font-weight:700}input,textarea,select{border:1px solid va
 import {startBCCData} from "./firebase-data.js";
 import {initializeApp,getApps} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
-const ADMIN_UID="nozJl8upb4MrCdjeBgQ41VfTRNp1"; let people=[];
+const ADMIN_UID="tSirLJ49mPTM2wo7kpmAxbqT7Rj2"; let people=[];
 const cfg=window.BCC_FIREBASE_CONFIG||{}; const configured=cfg.apiKey&&!String(cfg.apiKey).includes("PASTE_");
 if(configured){const app=getApps().length?getApps()[0]:initializeApp(cfg);const auth=getAuth(app);onAuthStateChanged(auth,u=>{if(!u||u.uid!==ADMIN_UID)location.href="admin.html"})}
 window.addEventListener("bcc-data",e=>{people=e.detail.records||[];renderRecipients()}); if (!configured) { document.querySelector("main").innerHTML = "<h2>Firebase configuration required for invitations.</h2>"; } else {

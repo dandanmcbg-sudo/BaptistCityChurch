@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.uid == 'tSirLJ49mPTM2wo7kpmAxbqT7Rj2';
+    }
+
+    function validPublicRegistration(memberId) {
+      let d = request.resource.data;
+      return request.auth == null
+        && d.keys().hasOnly([
+          'id', 'name', 'category', 'email', 'contact', 'ministry',
+          'firstTimeVisitor', 'invitedBy', 'contactMethod', 'birthday',
+          'prayerRequest', 'reminderConsent', 'reminderEnabled',
+          'totalAttendance', 'lastAttended', 'notes', 'updatedAt'
+        ])
+        && d.keys().hasAll(['name', 'category', 'totalAttendance'])
+        && d.name is string
+        && d.name.size() > 0 && d.name.size() <= 150
+        && d.category in ['Member', 'Visitor', 'Guest']
+        && d.totalAttendance is int
+        && d.totalAttendance == 0
+        && (!('email' in d) || (d.email is string && d.email.size() <= 254))
+        && (!('contact' in d) || (d.contact is string && d.contact.size() <= 40))
+        && (!('prayerRequest' in d) || (d.prayerRequest is string && d.prayerRequest.size() <= 2000))
+        && (!('reminderConsent' in d) || d.reminderConsent is bool)
+        && (!('reminderEnabled' in d) || d.reminderEnabled is bool)
+        && (!('id' in d) || d.id == memberId);
+    }
+
+    match /members/{memberId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || validPublicRegistration(memberId);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
