@@ -62,11 +62,36 @@ function sync_(records){
   return {ok:true,created,updated,skipped};
 }
 function email_(person,event){
+  // Email-safe tables and inline styles mirror invitation.html's Email Preview.
   const x=escape_;
-  const rsvp=String(event.rsvp||'');
-  const link=/^https:\/\/[^\s<>"']+$/i.test(rsvp)?'<p><a href="'+x(rsvp)+'">Event details / RSVP</a></p>':'';
-  return '<div style="font-family:Arial,sans-serif;background:#f4efe7;padding:24px"><div style="max-width:580px;margin:auto;background:#fffdfa;padding:28px;border-radius:14px"><h1>Baptist City Church</h1><h2>You’re Invited!</h2><p>Hello '+x(person.name||'Friend')+',</p><p>'+x(event.message||'We would love to see you!')+'</p><p><strong>'+x(event.name)+'</strong></p><p>'+x(event.date)+' · '+x(event.time||'')+'</p><p>'+x(event.venue||'Baptist City Church')+'</p>'+link+'<blockquote>“I was glad when they said unto me, Let us go into the house of the LORD.” — Psalm 122:1 (KJV)</blockquote><p>With love,<br>Baptist City Church</p></div></div>';
+  const name=x(person.name||'Guest');
+  const title=x(event.name||'Upcoming Church Event');
+  const message=x(event.message||'We would love to have you join us.').replace(/\r?\n/g,'<br>');
+  const date=x(event.date||'Event date');
+  const time=x(event.time||'Event time');
+  const venue=x(event.venue||'Baptist City Church');
+  const rsvp=String(event.rsvp||'').trim();
+  const link=/^https:\/\/[^\s<>"']+$/i.test(rsvp)
+    ? '<p style="margin:18px 0 0"><a href="'+x(rsvp)+'" style="background:#171717;color:#ffffff;padding:11px 18px;border-radius:9px;text-decoration:none;font-weight:bold;display:inline-block">RSVP / Event Details</a></p>' : '';
+  // A publicly accessible logo is required for images in Gmail. No private Firebase URL.
+  const logo='https://baptistcitychurch.pages.dev/assets/bcc-logo.png';
+  return '<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'+
+    '<body style="margin:0;padding:0;background:#f2eee7;font-family:Arial,Helvetica,sans-serif;color:#171717">'+
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f2eee7"><tr><td align="center" style="padding:18px 12px">'+
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:620px;background:#ffffff;border:1px solid #e7ddd0;border-radius:14px;overflow:hidden">'+
+    '<tr><td align="center" style="background:#171717;color:#ffffff;padding:24px 16px">'+
+    '<img src="'+logo+'" alt="Baptist City Church" width="56" height="56" style="display:block;border:0;border-radius:12px;width:56px;height:56px;object-fit:cover;margin:0 auto 12px">'+
+    '<div style="font-size:18px;font-weight:700;line-height:1.35">You&#39;re Invited</div><div style="font-size:14px;line-height:1.5">Baptist City Church</div></td></tr>'+
+    '<tr><td style="padding:26px 24px 28px">'+
+    '<div style="font-size:13px;color:#6e6259">Dear <strong>'+name+'</strong>,</div>'+
+    '<h2 style="font-size:20px;margin:7px 0 15px;line-height:1.3;color:#171717">'+title+'</h2>'+
+    '<p style="font-size:15px;line-height:1.65;margin:0 0 17px">'+message+'</p>'+
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f7f2ea;border-radius:12px"><tr><td style="padding:16px;font-size:14px;line-height:1.6">'+
+    '<strong>'+date+'</strong><br>'+time+'<br>'+venue+'</td></tr></table>'+link+
+    '<p style="font-size:13px;color:#786b60;line-height:1.5;margin:23px 0 0">With love,<br>Baptist City Church</p>'+
+    '</td></tr></table></td></tr></table></body></html>';
 }
+
 function send_(data){
   const e=data.event||{};
   const event={name:safeText_(e.name,120),date:safeText_(e.date,40),time:safeText_(e.time,40),venue:safeText_(e.venue,150),message:safeText_(e.message,2000),rsvp:safeText_(e.rsvp,500)};
@@ -107,7 +132,9 @@ function api_(action,data,token){
     const props=PropertiesService.getScriptProperties(),key='BCC_TEST_'+requestId;
     const lock=LockService.getScriptLock();lock.waitLock(15000);
     try{if(props.getProperty(key))return {ok:false,message:'Test already submitted.'};props.setProperty(key,new Date().toISOString())}finally{lock.releaseLock()}
-    MailApp.sendEmail({to,subject:'BCC Invitation Email Test',body:'Baptist City Church email backend test.',htmlBody:email_({name:'Friend'},{name:'Sunday Worship',date:'Upcoming Sunday',venue:'Baptist City Church',message:'This is a test invitation.'}),name:'Baptist City Church'});
+    const e=data.event||{};
+    const testEvent={name:safeText_(e.name,120)||'Upcoming Church Event',date:safeText_(e.date,40)||'Event date',time:safeText_(e.time,40)||'Event time',venue:safeText_(e.venue,150)||'Baptist City Church',message:safeText_(e.message,2000)||'We would love to have you join us.',rsvp:safeText_(e.rsvp,500)};
+    MailApp.sendEmail({to,subject:'[TEST] You’re Invited — '+testEvent.name,body:'Baptist City Church invitation preview: '+testEvent.name+' | '+testEvent.date+' | '+testEvent.venue,htmlBody:email_({name:'Guest'},testEvent),name:'Baptist City Church'});
     return {ok:true,message:'Test accepted by MailApp.'};
   }
   throw Error('Unsupported action.');
