@@ -38,7 +38,7 @@ label{font-size:.78rem;font-weight:700}input,textarea,select{border:1px solid va
 <div class="field full"><label>Event Name</label><input id="eventName" placeholder="e.g. Church Anniversary Celebration" oninput="preview()"></div>
 <div class="field"><label>Date</label><input id="eventDate" type="date" oninput="preview()"></div>
 <div class="field"><label>Time</label><input id="eventTime" type="time" oninput="preview()"></div>
-<div class="field full"><label>Venue</label><input id="venue" placeholder="Baptist City Church" oninput="preview()"></div>
+<div class="field full"><label>Location</label><input id="venue" placeholder="Baptist City Church" oninput="preview()"></div>
 <div class="field full"><label>Invitation Message</label><textarea id="message" rows="5" placeholder="We would love to have you join us..." oninput="preview()"></textarea></div>
 <div class="field full"><label>RSVP / Event Link (optional)</label><input id="rsvp" type="url" placeholder="https://..." oninput="preview()"></div>
 </div></section>
@@ -53,7 +53,7 @@ label{font-size:.78rem;font-weight:700}input,textarea,select{border:1px solid va
 <div class="preview-column"><section class="card preview-card"><h2>Email Preview</h2><div class="preview"><div class="email">
 <div class="email-head"><img src="assets/bcc-logo.png"><h2 style="margin:10px 0 0">You're Invited</h2><div>Baptist City Church</div></div>
 <div class="email-body"><div class="muted">Dear <b>Guest</b>,</div><h2 id="pName">Upcoming Church Event</h2><p id="pMsg">We would love to have you join us.</p>
-<div class="event-box"><b id="pDate">Event date</b><br><span id="pTime">Event time</span><br><span id="pVenue">Baptist City Church</span></div>
+<div class="event-box"><div><span aria-hidden="true">📅</span> <strong>Date:</strong> <span id="pDate">Select a date</span></div><div><span aria-hidden="true">🕒</span> <strong>Time:</strong> <span id="pTime">Select a time</span></div><div><span aria-hidden="true">📍</span> <strong>Location:</strong> <span id="pVenue">Baptist City Church</span></div></div>
 <a id="pRsvp" class="rsvp" href="#">RSVP / Event Details</a><p class="muted" style="margin-top:22px">With love,<br>Baptist City Church</p></div>
 </div></div></section></div></div>
 </main></div>
@@ -102,7 +102,19 @@ window.renderRecipients=renderRecipients;
 function renderRecipients(){const previouslySelected=new Set([...document.querySelectorAll(".pick:checked")].map(c=>c.dataset.id));const withEmail=people.filter(x=>x.email && (x.reminderConsent===true));recipients.innerHTML=withEmail.length?withEmail.map(x=>`<label class="person"><input class="pick" type="checkbox" data-id="${esc(x.id)}" onchange="count()"><span><b>${esc(x.name)}</b><small>${esc(x.email)} • ${esc(x.category||'')}</small></span></label>`).join(''):`<div style="padding:18px" class="muted">No attendees with valid email consent yet.</div>`;document.querySelectorAll(".pick").forEach(c=>{c.checked=previouslySelected.has(c.dataset.id)});count()}
 window.count=()=>selectedCount.textContent=document.querySelectorAll(".pick:checked").length+" selected";
 window.selectGroup=g=>{document.querySelectorAll(".pick").forEach(c=>{let p=people.find(x=>x.id===c.dataset.id);c.checked=g==="all"||(g!=="none"&&p?.category===g)});count()}
-window.preview=()=>{pName.textContent=eventName.value||"Upcoming Church Event";pMsg.textContent=message.value||"We would love to have you join us.";pDate.textContent=eventDate.value||"Event date";pTime.textContent=eventTime.value||"Event time";pVenue.textContent=venue.value||"Baptist City Church";pRsvp.style.display=rsvp.value?"inline-block":"none";pRsvp.href=rsvp.value||"#"}
+function bccPrettyDate(value){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value||""))return "Select a date";
+  const [y,m,d]=value.split("-").map(Number);
+  const date=new Date(Date.UTC(y,m-1,d));
+  if(date.getUTCFullYear()!==y||date.getUTCMonth()!==m-1||date.getUTCDate()!==d)return "Select a date";
+  return new Intl.DateTimeFormat("en-US",{month:"long",day:"numeric",year:"numeric",timeZone:"UTC"}).format(date);
+}
+function bccPrettyTime(value){
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(value||""))return "Select a time";
+  const [h,m]=value.split(":").map(Number);
+  return String(h%12||12)+":"+String(m).padStart(2,"0")+" "+(h<12?"AM":"PM");
+}
+window.preview=()=>{pName.textContent=eventName.value||"Upcoming Church Event";pMsg.textContent=message.value||"We would love to have you join us.";pDate.textContent=bccPrettyDate(eventDate.value);pTime.textContent=bccPrettyTime(eventTime.value);pVenue.textContent=venue.value||"Baptist City Church";pRsvp.style.display=rsvp.value?"inline-block":"none";pRsvp.href=rsvp.value||"#"}
 window.saveUrl=()=>{localStorage.setItem("bcc_apps_script_url",scriptUrl.value.trim());show("Apps Script URL saved.")};scriptUrl.value=localStorage.getItem("bcc_apps_script_url")||DEFAULT_SCRIPT_URL;
 let lastSyncSignature="";
 async function syncRecipientsToSheets(records){

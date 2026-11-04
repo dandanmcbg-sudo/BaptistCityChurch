@@ -61,14 +61,28 @@ function sync_(records){
   });
   return {ok:true,created,updated,skipped};
 }
+function bccEmailDate_(value){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value||''));
+  if(!m)return String(value||'');
+  const y=Number(m[1]),mo=Number(m[2]),d=Number(m[3]);
+  const dt=new Date(Date.UTC(y,mo-1,d));
+  if(dt.getUTCFullYear()!==y||dt.getUTCMonth()!==mo-1||dt.getUTCDate()!==d)return String(value||'');
+  return Utilities.formatDate(dt,'UTC','MMMM d, yyyy');
+}
+function bccEmailTime_(value){
+  const m=/^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(value||''));
+  if(!m)return String(value||'');
+  const h=Number(m[1]);
+  return (h%12||12)+':'+m[2]+' '+(h<12?'AM':'PM');
+}
 function email_(person,event){
   // Email-safe tables and inline styles mirror invitation.html's Email Preview.
   const x=escape_;
   const name=x(person.name||'Guest');
   const title=x(event.name||'Upcoming Church Event');
   const message=x(event.message||'We would love to have you join us.').replace(/\r?\n/g,'<br>');
-  const date=x(event.date||'Event date');
-  const time=x(event.time||'Event time');
+  const date=x(bccEmailDate_(event.date)||'Event date');
+  const time=x(bccEmailTime_(event.time)||'Event time');
   const venue=x(event.venue||'Baptist City Church');
   const rsvp=String(event.rsvp||'').trim();
   const link=/^https:\/\/[^\s<>"']+$/i.test(rsvp)
@@ -87,7 +101,7 @@ function email_(person,event){
     '<h2 style="font-size:20px;margin:7px 0 15px;line-height:1.3;color:#171717">'+title+'</h2>'+
     '<p style="font-size:15px;line-height:1.65;margin:0 0 17px">'+message+'</p>'+
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f7f2ea;border-radius:12px"><tr><td style="padding:16px;font-size:14px;line-height:1.6">'+
-    '<strong>'+date+'</strong><br>'+time+'<br>'+venue+'</td></tr></table>'+link+
+    '&#128197; <strong>Date:</strong> '+date+'<br>&#128336; <strong>Time:</strong> '+time+'<br>&#128205; <strong>Location:</strong> '+venue+'</td></tr></table>'+link+
     '<p style="font-size:13px;color:#786b60;line-height:1.5;margin:23px 0 0">With love,<br>Baptist City Church</p>'+
     '</td></tr></table></td></tr></table></body></html>';
 }
