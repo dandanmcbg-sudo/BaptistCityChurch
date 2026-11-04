@@ -115,7 +115,7 @@ async function syncRecipientsToSheets(records){
     const u=getAuth().currentUser;
     if(!u||u.uid!==ADMIN_UID)return;
     const idToken=await u.getIdToken();
-    await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"syncAttendees",idToken,records:list})});
+    await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"sync",token:idToken,data:{records:list}})});
     lastSyncSignature=signature;
     // no-cors gives an opaque response; backend success cannot be confirmed here.
   }catch(err){console.error("Google Sheets sync request failed",err)}
@@ -131,16 +131,16 @@ async function send(recs){
   if (!unique.length) return show("No valid recipient email addresses selected.");
   if (unique.length > 100) return show("Send at most 100 recipients per batch.");
   if(!confirm(`Submit ${unique.length} invitation(s) to the church email service?`))return;
-  sending=true;sendBtn.disabled=true;testBtn.disabled=true;show("Sending invitations…");
+  sending=true;sendBtn.disabled=true;testBtn.disabled=true;show("Submitting invitation batch to Apps Script…");
   try{
     const user=getAuth(getApps()[0]).currentUser;
     if(!user || user.uid!==ADMIN_UID) throw new Error("Admin session expired. Please sign in again.");
     const idToken=await user.getIdToken();
-    const request={...payload(unique),idToken,requestId:crypto.randomUUID().replaceAll("-","")};
+    const request={action:"send",token:idToken,data:{...payload(unique),requestId:crypto.randomUUID().replaceAll("-","")}};
     // Google Apps Script ContentService redirects responses to a different origin.
     // A no-cors request avoids misleading browser CORS errors, but cannot confirm delivery.
     await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(request)});
-    show("Invitation batch submitted (reference: " + request.requestId + "). Delivery cannot be confirmed from this browser. Verify the result in Apps Script → Executions and the sender’s Sent folder before retrying.");
+    show("Invitation batch submitted (reference: " + request.data.requestId + "). Delivery cannot be confirmed from this browser. Verify the result in Apps Script → Executions and the sender’s Sent folder before retrying.");
   }catch(error){
     console.error("BCC invitation delivery:",error);
     show("Request failed before confirmation: " + (error.message||"Unknown error") + ". Check the Apps Script deployment and Executions log.");
@@ -160,8 +160,8 @@ window.sendTest=async()=>{
   try{
     const u=getAuth().currentUser;
     const idToken=await u.getIdToken();
-    await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"testEmail",email,idToken})});
-    show("Test request submitted. Check Apps Script → Executions and your inbox. Browser cannot verify delivery due to Google Apps Script cross-origin restrictions.");
+    await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"test",token:idToken,data:{email,requestId:crypto.randomUUID().replaceAll("-","")}})});
+    show("Test email request submitted for " + email + ". Check inbox and Apps Script → Executions. This browser cannot confirm delivery.");
   }catch(err){show("Test request failed: "+err.message)}
 };
 function show(t){const el=document.getElementById("status");if(el){el.style.display="block";el.textContent=t}} function esc(v){return String(v||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}

@@ -1,0 +1,9 @@
+{
+  "name": "Baptist City Church Attendance",
+  "short_name": "BCC Attendance",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f6f2ec",
+  "theme_color": "#171717",
+  "icons": []
+}
