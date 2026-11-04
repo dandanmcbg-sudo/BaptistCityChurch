@@ -34,6 +34,10 @@ service cloud.firestore {
       allow create: if isAdmin() || validPublicRegistration(memberId);
     }
 
+    match /churchEvents/{eventId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

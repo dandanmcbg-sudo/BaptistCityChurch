@@ -154,6 +154,16 @@ function api_(action,data,token){
   if(action==='list')return {ok:true,recipients:read_()};
   if(action==='sync')return sync_(data.records||[]);
   if(action==='send')return send_(data);
+  if(action==='automationStatus'){
+    const requestId=safeText_(data.requestId,80);
+    if(!/^[a-zA-Z0-9_-]{8,80}$/.test(requestId))throw Error('Invalid request ID.');
+    const props=PropertiesService.getScriptProperties();
+    const recent=JSON.parse(props.getProperty('BCC_AUTO_HISTORY')||'[]');
+    const active=ScriptApp.getProjectTriggers().some(t=>t.getHandlerFunction()==='sendSaturdayInvitation');
+    const result={ok:true,active,timezone:'Asia/Manila',schedule:'Saturday approximately 8:00 AM',history:recent.slice(0,30),quota:MailApp.getRemainingDailyQuota()};
+    props.setProperty('BCC_RESULT_'+requestId,JSON.stringify({status:'accepted',kind:'automationStatus',...result}));
+    return result;
+  }
   if(action==='test'){
     const to=safeText_(data.email,254);
     if(!emailValid_(to))throw Error('Valid test email required.');
@@ -249,9 +259,9 @@ function sendSaturdayInvitation(){
     const props=PropertiesService.getScriptProperties();
     const key='BCC_AUTO_INVITATION_'+today;
     const recipients=[...new Map(read_().map(p=>[p.email.trim().toLowerCase(),p])).values()];
-    if(!recipients.length)return {ok:false,message:'No opted-in recipients in Google Sheets; nothing sent.'};
+    if(!recipients.length){bccAutoLog_({date:today,eventDate:date,sent:0,failed:0,already:0,status:'no-recipients'});return {ok:false,message:'No opted-in recipients in Google Sheets; nothing sent.'};}
     const remaining=MailApp.getRemainingDailyQuota();
-    if(remaining<recipients.length)return {ok:false,message:'Insufficient MailApp quota; nothing sent.'};
+    if(remaining<recipients.length){bccAutoLog_({date:today,eventDate:date,sent:0,failed:0,already:0,status:'quota-insufficient'});return {ok:false,message:'Insufficient MailApp quota; nothing sent.'};}
     let sent=0,failed=0,already=0;
     recipients.forEach(p=>{
       const recipientKey=key+'_'+Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,p.email.toLowerCase())).slice(0,30);
@@ -265,7 +275,16 @@ function sendSaturdayInvitation(){
         props.setProperty(recipientKey,'accepted:'+new Date().toISOString());sent++;
       }catch(err){failed++;console.error('Saturday invitation delivery error: '+err.message)}
     });
+    bccAutoLog_({date:today,eventDate:date,sent,failed,already,status:failed?'partial':'accepted'});
     console.log(JSON.stringify({date:today,eventDate:date,sent,failed,already}));
     return {ok:failed===0,sent,failed,already,eventDate:date};
   }finally{lock.releaseLock()}
+}
+
+// Aggregate only. Do not store member names or addresses in dashboard history.
+function bccAutoLog_(entry){
+  const props=PropertiesService.getScriptProperties();
+  const history=JSON.parse(props.getProperty('BCC_AUTO_HISTORY')||'[]');
+  history.unshift({...entry,executedAt:new Date().toISOString()});
+  props.setProperty('BCC_AUTO_HISTORY',JSON.stringify(history.slice(0,40)));
 }
