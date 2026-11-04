@@ -236,7 +236,7 @@ const BCC_AUTO_INVITATION = Object.freeze({
   eventName:'Sunday Worship Service',
   eventTime:'09:00', // Change to the church's confirmed Sunday service time.
   venue:'Baptist City Church',
-  message:'You are warmly invited to worship with us this Sunday. We look forward to seeing you!'
+  message:'You are warmly invited to worship with us this Sunday. We look forward to seeing you!\n\n“I was glad when they said unto me, Let us go into the house of the LORD.” — Psalm 122:1 (KJV)'
 });
 function setupSaturdayInvitationTrigger(){
   ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()==='sendSaturdayInvitation')

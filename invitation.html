@@ -30,9 +30,7 @@ label{font-size:.78rem;font-weight:700}input,textarea,select{border:1px solid va
 </head><body>
 <div class="shell"><aside>
 <div class="brand"><img src="assets/bcc-logo.png"><div><b>Baptist City Church</b><span>Admin Invitation Center</span></div></div>
-<nav><a href="admin.html">Dashboard</a><a class="active" aria-current="page" href="invitation.html">Invitation Center</a>
-  <a href="automation.html">Email Automation Center</a>
-  <a href="events.html">Church Events Calendar</a></nav>
+<nav><a href="admin.html">Dashboard</a><a class="active" aria-current="page" href="invitation.html">Invitation Center</a></nav>
 </aside><main>
 <div class="top"><div><h1>Invitation Center</h1><div class="muted">Create and send branded event invitations to saved email addresses.</div></div></div>
 <div class="grid"><div class="editor-column">
@@ -116,10 +114,7 @@ function bccPrettyTime(value){
   const [h,m]=value.split(":").map(Number);
   return String(h%12||12)+":"+String(m).padStart(2,"0")+" "+(h<12?"AM":"PM");
 }
-// Calendar handoff: fills fields only; admin must explicitly send invitations.
-try{const draft=sessionStorage.getItem('bcc_event_draft');if(draft){sessionStorage.removeItem('bcc_event_draft');const d=JSON.parse(draft);for(const [key,id] of [['name','eventName'],['date','eventDate'],['time','eventTime'],['venue','venue'],['message','message']]){if(d[key]!=null)document.getElementById(id).value=d[key]}}}catch(err){console.warn('Could not load calendar event draft',err)}
 window.preview=()=>{pName.textContent=eventName.value||"Upcoming Church Event";pMsg.textContent=message.value||"We would love to have you join us.";pDate.textContent=bccPrettyDate(eventDate.value);pTime.textContent=bccPrettyTime(eventTime.value);pVenue.textContent=venue.value||"Baptist City Church";pRsvp.style.display=rsvp.value?"inline-block":"none";pRsvp.href=rsvp.value||"#"}
-preview();
 window.saveUrl=()=>{localStorage.setItem("bcc_apps_script_url",scriptUrl.value.trim());show("Apps Script URL saved.")};scriptUrl.value=localStorage.getItem("bcc_apps_script_url")||DEFAULT_SCRIPT_URL;
 let lastSyncSignature="";
 async function syncRecipientsToSheets(records){
