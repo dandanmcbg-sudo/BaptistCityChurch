@@ -149,14 +149,17 @@ function render(){
 }
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function fillExtra(x={}){personEmail.value=x.email||'';personMinistry.value=x.ministry||'';personFirstTime.value=x.firstTimeVisitor?'Yes':'No';personInvitedBy.value=x.invitedBy||'';personContactMethod.value=x.contactMethod||'';personBirthday.value=x.birthday||'';personPrayerRequest.value=x.prayerRequest||'';personConsent.checked=x.reminderConsent===true}
-function openAdd(){editing=null;modalTitle.textContent='Add Person';name.value='';category.value='Member';contact.value='';attendance.value=1;last.value=new Date().toISOString().slice(0,10);fillExtra();modal.classList.add('show')}
-function edit(id){let x=db.find(v=>v.id===id);if(!x)return;editing=id;modalTitle.textContent='Edit Record';name.value=x.name||'';category.value=x.category||'Member';contact.value=x.contact||'';attendance.value=x.totalAttendance||0;last.value=x.lastAttended||'';fillExtra(x);modal.classList.add('show')}
+function openAdd(){const name=document.getElementById('name');editing=null;modalTitle.textContent='Add Person';name.value='';category.value='Member';contact.value='';attendance.value=1;last.value=new Date().toISOString().slice(0,10);fillExtra();modal.classList.add('show')}
+function edit(id){const name=document.getElementById('name');let x=db.find(v=>v.id===id);if(!x)return;editing=id;modalTitle.textContent='Edit Record';name.value=x.name||'';category.value=x.category||'Member';contact.value=x.contact||'';attendance.value=x.totalAttendance||0;last.value=x.lastAttended||'';fillExtra(x);modal.classList.add('show')}
 function closeModal(){modal.classList.remove('show')}
-async function saveRecord(){let n=name.value.trim();if(!n)return alert('Full name is required.');let old=editing?db.find(x=>x.id===editing):null;let consent=personConsent.checked;let obj={...(old||{}),id:editing||('id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),name:n,category:category.value,contact:contact.value.trim(),email:personEmail.value.trim(),ministry:personMinistry.value.trim(),firstTimeVisitor:personFirstTime.value==='Yes',invitedBy:personInvitedBy.value.trim(),contactMethod:personContactMethod.value,birthday:personBirthday.value,prayerRequest:personPrayerRequest.value.trim(),reminderConsent:consent,reminderEnabled:consent,totalAttendance:Number(attendance.value)||0,lastAttended:last.value,notes:old?.notes||''};const saveButton=document.querySelector('#modal .actions .btn:not(.light)');
+async function saveRecord(){const name=document.getElementById('name');let n=name.value.trim();if(!n)return alert('Full name is required.');let old=editing?db.find(x=>x.id===editing):null;let consent=personConsent.checked;let obj={...(old||{}),id:editing||('id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),name:n,category:category.value,contact:contact.value.trim(),email:personEmail.value.trim(),ministry:personMinistry.value.trim(),firstTimeVisitor:personFirstTime.value==='Yes',invitedBy:personInvitedBy.value.trim(),contactMethod:personContactMethod.value,birthday:personBirthday.value,prayerRequest:personPrayerRequest.value.trim(),reminderConsent:consent,reminderEnabled:consent,totalAttendance:Number(attendance.value)||0,lastAttended:last.value,notes:old?.notes||''};const saveButton=document.querySelector('#modal .actions .btn:not(.light)');
 if(saveButton){saveButton.disabled=true;saveButton.textContent='Saving…'}
 try{
   if(!window.BCCStore?.upsert) throw new Error('Firebase data module has not loaded. Refresh the page.');
   await window.BCCStore.upsert(obj);
+  const existingIndex=db.findIndex(x=>x.id===obj.id);
+  if(existingIndex>=0)db[existingIndex]=obj;else db.push(obj);
+  render();
   closeModal();
 }catch(error){
   console.error('Attendee save failed:',error);
@@ -193,7 +196,8 @@ render();
 <script type="module">
 import {startBCCData,upsertBCCRecord,removeBCCRecord,clearBCCRecords} from "./firebase-data.js";
 window.BCCStore={
- upsert:upsertBCCRecord,\n remove:removeBCCRecord,
+ upsert:upsertBCCRecord,
+ remove:removeBCCRecord,
  clear:clearBCCRecords,
  syncAll(records){records.forEach(r=>upsertBCCRecord(r))}
 };
