@@ -215,3 +215,57 @@ function testBCCEmailDelivery(){
   MailApp.sendEmail({to:recipient,subject:'[TEST] You’re Invited — '+event.name,body:'Baptist City Church HTML invitation test.',htmlBody:email_({name:'Guest'},event),name:'Baptist City Church'});
   Logger.log('MailApp accepted one HTML test email to '+recipient);
 }
+
+/** AUTOMATIC INVITATION CENTER — separate from manual Send Invitation.
+ * One-time setup: run setupSaturdayInvitationTrigger() in Apps Script.
+ * Schedule: Saturday ~8 AM Asia/Manila; event: following Sunday.
+ * Source: Google Sheets Attendees, with explicit consent + reminders enabled.
+ * IMPORTANT: Keep Sheets synced from Firebase before Saturday.
+ */
+const BCC_AUTO_INVITATION = Object.freeze({
+  eventName:'Sunday Worship Service',
+  eventTime:'09:00', // Change to the church's confirmed Sunday service time.
+  venue:'Baptist City Church',
+  message:'You are warmly invited to worship with us this Sunday. We look forward to seeing you!'
+});
+function setupSaturdayInvitationTrigger(){
+  ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()==='sendSaturdayInvitation')
+    .forEach(t=>ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('sendSaturdayInvitation').timeBased().onWeekDay(ScriptApp.WeekDay.SATURDAY)
+    .atHour(8).nearMinute(0).everyWeeks(1).inTimezone('Asia/Manila').create();
+  console.log('Saturday invitation trigger installed (approximately 8 AM, Asia/Manila).');
+}
+function sendSaturdayInvitation(){
+  const now=new Date();
+  const day=Utilities.formatDate(now,'Asia/Manila','u'); // 1=Mon, 6=Sat
+  if(day!=='6')return {ok:false,message:'Skipped: not Saturday in Philippine time.'};
+  const today=Utilities.formatDate(now,'Asia/Manila','yyyy-MM-dd');
+  const sunday=new Date(Date.UTC(Number(today.slice(0,4)),Number(today.slice(5,7))-1,Number(today.slice(8,10))+1));
+  const date=Utilities.formatDate(sunday,'UTC','yyyy-MM-dd');
+  const event={name:BCC_AUTO_INVITATION.eventName,date:date,time:BCC_AUTO_INVITATION.eventTime,
+    venue:BCC_AUTO_INVITATION.venue,message:BCC_AUTO_INVITATION.message,rsvp:''};
+  const lock=LockService.getScriptLock();lock.waitLock(30000);
+  try{
+    const props=PropertiesService.getScriptProperties();
+    const key='BCC_AUTO_INVITATION_'+today;
+    const recipients=[...new Map(read_().map(p=>[p.email.trim().toLowerCase(),p])).values()];
+    if(!recipients.length)return {ok:false,message:'No opted-in recipients in Google Sheets; nothing sent.'};
+    const remaining=MailApp.getRemainingDailyQuota();
+    if(remaining<recipients.length)return {ok:false,message:'Insufficient MailApp quota; nothing sent.'};
+    let sent=0,failed=0,already=0;
+    recipients.forEach(p=>{
+      const recipientKey=key+'_'+Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,p.email.toLowerCase())).slice(0,30);
+      if(props.getProperty(recipientKey)){already++;return}
+      // Reserve before sending to avoid duplicate messages on trigger retries.
+      props.setProperty(recipientKey,'started:'+new Date().toISOString());
+      try{
+        MailApp.sendEmail({to:p.email,subject:'You’re Invited — '+event.name,
+          body:'You are invited to '+event.name+' on '+bccEmailDate_(event.date)+' at '+bccEmailTime_(event.time)+'.',
+          htmlBody:email_(p,event),name:'Baptist City Church'});
+        props.setProperty(recipientKey,'accepted:'+new Date().toISOString());sent++;
+      }catch(err){failed++;console.error('Saturday invitation delivery error: '+err.message)}
+    });
+    console.log(JSON.stringify({date:today,eventDate:date,sent,failed,already}));
+    return {ok:failed===0,sent,failed,already,eventDate:date};
+  }finally{lock.releaseLock()}
+}
