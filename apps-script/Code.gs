@@ -103,6 +103,7 @@ function send_(data){
   const allowed=new Map(read_().map(p=>[p.id,p]));
   const chosen=ids.map(id=>allowed.get(id)).filter(Boolean);
   if(!chosen.length)throw Error('No opted-in recipients found in Google Sheets.');
+  console.log('BCC invitation: opted-in recipients=' + chosen.length);
   if(MailApp.getRemainingDailyQuota()<chosen.length)throw Error('Insufficient email quota today.');
   const lock=LockService.getScriptLock();lock.waitLock(15000);
   try{
@@ -110,6 +111,7 @@ function send_(data){
     if(props.getProperty(key))return {ok:false,message:'Request already started. Check Sent folder and execution logs before retrying.'};
     // Reserve before sending: prevents duplicates after a timeout; may require manual reconciliation on partial failure.
     props.setProperty(key,JSON.stringify({status:'started',at:new Date().toISOString()}));
+    props.setProperty('BCC_RESULT_'+requestId,JSON.stringify({status:'processing',kind:'send',at:new Date().toISOString()}));
   }finally{lock.releaseLock()}
   let sent=0,failed=0;
   chosen.forEach(p=>{
@@ -117,10 +119,14 @@ function send_(data){
     catch(err){failed++;console.error('Mail delivery failed: '+err.message)}
   });
   PropertiesService.getScriptProperties().setProperty('BCC_SENT_'+requestId,JSON.stringify({status:'finished',sent,failed,at:new Date().toISOString()}));
+  PropertiesService.getScriptProperties().setProperty('BCC_RESULT_'+requestId,JSON.stringify({status:failed?'partial':'accepted',kind:'send',sent,failed,at:new Date().toISOString()}));
+  console.log('BCC invitation batch result: accepted=' + sent + ', failed=' + failed);
   return {ok:failed===0,sent,failed,message:'Accepted by MailApp: '+sent+'; failed: '+failed};
 }
 function api_(action,data,token){
+  console.log('BCC request received: action=' + action);
   verify_(token);
+  console.log('BCC admin verified: action=' + action);
   if(action==='list')return {ok:true,recipients:read_()};
   if(action==='sync')return sync_(data.records||[]);
   if(action==='send')return send_(data);
@@ -134,22 +140,40 @@ function api_(action,data,token){
     try{if(props.getProperty(key))return {ok:false,message:'Test already submitted.'};props.setProperty(key,new Date().toISOString())}finally{lock.releaseLock()}
     const e=data.event||{};
     const testEvent={name:safeText_(e.name,120)||'Upcoming Church Event',date:safeText_(e.date,40)||'Event date',time:safeText_(e.time,40)||'Event time',venue:safeText_(e.venue,150)||'Baptist City Church',message:safeText_(e.message,2000)||'We would love to have you join us.',rsvp:safeText_(e.rsvp,500)};
+    props.setProperty('BCC_RESULT_'+requestId,JSON.stringify({status:'processing',kind:'test',at:new Date().toISOString()}));
+    console.log('BCC test email: attempting MailApp send to ' + to);
     MailApp.sendEmail({to,subject:'[TEST] You’re Invited — '+testEvent.name,body:'Baptist City Church invitation preview: '+testEvent.name+' | '+testEvent.date+' | '+testEvent.venue,htmlBody:email_({name:'Guest'},testEvent),name:'Baptist City Church'});
+    props.setProperty('BCC_RESULT_'+requestId,JSON.stringify({status:'accepted',kind:'test',sent:1,failed:0,at:new Date().toISOString()}));
+    console.log('BCC test email: MailApp accepted delivery request to ' + to);
     return {ok:true,message:'Test accepted by MailApp.'};
   }
   throw Error('Unsupported action.');
 }
 function json_(obj){return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON)}
-function doGet(){return json_({ok:true,service:'BCC Invitation Backend',htmlManager:false})}
+// Status endpoint returns only non-personal delivery counts. Random request IDs are unguessable.
+// JSONP is needed because Apps Script ContentService does not provide CORS headers.
+function doGet(e){
+  const q=(e&&e.parameter)||{};
+  if(q.action!=='status')return json_({ok:true,service:'BCC Invitation Backend',htmlManager:false});
+  const id=String(q.id||'');
+  const callback=String(q.callback||'');
+  if(!/^[a-zA-Z0-9_-]{8,80}$/.test(id)||!/^BCCstatus_[a-zA-Z0-9_]{8,80}$/.test(callback))return json_({ok:false,message:'Invalid status query'});
+  const raw=PropertiesService.getScriptProperties().getProperty('BCC_RESULT_'+id);
+  const result=raw?JSON.parse(raw):{status:'unknown'};
+  return ContentService.createTextOutput(callback+'('+JSON.stringify(result)+');').setMimeType(ContentService.MimeType.JAVASCRIPT);
+}
 function doPost(e){
+  let requestId='';
   try{
     if(!e||!e.postData||!e.postData.contents)throw Error('Missing POST body.');
     const request=JSON.parse(e.postData.contents);
+    requestId=String(request.data&&request.data.requestId||'');
     const result=api_(String(request.action||''),request.data||{},request.token);
     console.log("BCC action " + String(request.action||"unknown") + " result: " + JSON.stringify(result));
     return json_(result);
   }catch(err){
     console.error('BCC API failure: '+(err&&err.stack||err));
+    if(/^[a-zA-Z0-9_-]{8,80}$/.test(requestId))PropertiesService.getScriptProperties().setProperty('BCC_RESULT_'+requestId,JSON.stringify({status:'failed',message:String(err&&err.message||'Unknown server error').slice(0,220),at:new Date().toISOString()}));
     return json_({ok:false,message:String(err&&err.message||'Unknown server error')});
   }
 }
@@ -157,4 +181,13 @@ function doPost(e){
 function checkBCCBackend(){
   const sh=sheet_();
   Logger.log('Backend ready. Attendees sheet: '+sh.getParent().getUrl()+'; rows: '+Math.max(0,sh.getLastRow()-1));
+}
+
+// Run this from the Apps Script editor ONLY to verify MailApp independently.
+// It sends one actual HTML invitation to the church's designated test inbox.
+function testBCCEmailDelivery(){
+  const recipient='dandanmcbg@gmail.com';
+  const event={name:'Baptist City Church — Test Invitation',date:'Test event date',time:'Test event time',venue:'Baptist City Church',message:'Greetings from Baptist City Church! This is an HTML email delivery test.',rsvp:''};
+  MailApp.sendEmail({to:recipient,subject:'[TEST] You’re Invited — '+event.name,body:'Baptist City Church HTML invitation test.',htmlBody:email_({name:'Guest'},event),name:'Baptist City Church'});
+  Logger.log('MailApp accepted one HTML test email to '+recipient);
 }

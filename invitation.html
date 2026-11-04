@@ -120,6 +120,32 @@ async function syncRecipientsToSheets(records){
     // no-cors gives an opaque response; backend success cannot be confirmed here.
   }catch(err){console.error("Google Sheets sync request failed",err)}
 }
+// Poll server-side status without exposing Firebase tokens in URLs.
+// Google Apps Script redirects ContentService responses; JSONP allows read-only status.
+function readDeliveryStatus(url,id){
+  return new Promise(resolve=>{
+    const cb="BCCstatus_"+id;
+    const node=document.createElement("script");
+    let finished=false;
+    const finish=result=>{if(finished)return;finished=true;clearTimeout(timer);delete window[cb];node.remove();resolve(result)};
+    window[cb]=result=>finish(result);
+    node.onerror=()=>finish(null);
+    const timer=setTimeout(()=>finish(null),6500);
+    node.src=url.split("?")[0]+"?action=status&id="+encodeURIComponent(id)+"&callback="+cb+"&t="+Date.now();
+    document.head.appendChild(node);
+  });
+}
+async function verifyDelivery(url,id,label){
+  for(let attempt=0;attempt<5;attempt++){
+    if(attempt)await new Promise(r=>setTimeout(r,1800));
+    const result=await readDeliveryStatus(url,id);
+    if(!result||result.status==="unknown"||result.status==="processing")continue;
+    if(result.status==="accepted")return show(label+": MailApp accepted "+result.sent+" email(s). Check inbox and Spam for actual delivery. Ref: "+id);
+    if(result.status==="partial")return show(label+": accepted "+result.sent+", failed "+result.failed+". Check Apps Script logs. Ref: "+id);
+    if(result.status==="failed")return show(label+" failed: "+(result.message||"Backend error")+". Ref: "+id);
+  }
+  show(label+" submitted, but backend status is unverified. Do not retry yet; check Apps Script logs. Ref: "+id);
+}
 function payload(recs){return {action:"sendInvitations",event:{name:eventName.value,date:eventDate.value,time:eventTime.value,venue:venue.value,message:message.value,rsvp:rsvp.value},recipientIds:recs.map(x=>x.id)}}
 async function send(recs){
   if(sending)return;
@@ -140,7 +166,8 @@ async function send(recs){
     // Google Apps Script ContentService redirects responses to a different origin.
     // A no-cors request avoids misleading browser CORS errors, but cannot confirm delivery.
     await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(request)});
-    show("Invitation batch submitted (reference: " + request.data.requestId + "). Delivery cannot be confirmed from this browser. Verify the result in Apps Script → Executions and the sender’s Sent folder before retrying.");
+    show("Invitation request submitted. Checking Apps Script delivery status…");
+    await verifyDelivery(url,request.data.requestId,"Invitation batch");
   }catch(error){
     console.error("BCC invitation delivery:",error);
     show("Request failed before confirmation: " + (error.message||"Unknown error") + ". Check the Apps Script deployment and Executions log.");
@@ -160,8 +187,11 @@ window.sendTest=async()=>{
   try{
     const u=getAuth().currentUser;
     const idToken=await u.getIdToken();
-    await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"test",token:idToken,data:{email,event:{name:eventName.value,date:eventDate.value,time:eventTime.value,venue:venue.value,message:message.value,rsvp:rsvp.value},requestId:crypto.randomUUID().replaceAll("-","")}})});
-    show("Test email request submitted for " + email + ". Check inbox and Apps Script → Executions. This browser cannot confirm delivery.");
+    const requestId=crypto.randomUUID().replaceAll("-","");
+    const event={name:eventName.value,date:eventDate.value,time:eventTime.value,venue:venue.value,message:message.value,rsvp:rsvp.value};
+    await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"test",token:idToken,data:{email,event,requestId}})});
+    show("Test email submitted for " + email + ". Checking Apps Script delivery status…");
+    await verifyDelivery(url,requestId,"Test email to "+email);
   }catch(err){show("Test request failed: "+err.message)}
 };
 function show(t){const el=document.getElementById("status");if(el){el.style.display="block";el.textContent=t}} function esc(v){return String(v||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
