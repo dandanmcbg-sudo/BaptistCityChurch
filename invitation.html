@@ -59,30 +59,44 @@ label{font-size:.78rem;font-weight:700}input,textarea,select{border:1px solid va
 </div></div></section></div></div>
 </main></div>
 <script type="module">
-import {getFirestore,collection,getDocs} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+import {startBCCData} from "./firebase-data.js";
 import {initializeApp,getApps,getApp} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 import {getAuth,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
 const ADMIN_UID="tSirLJ49mPTM2wo7kpmAxbqT7Rj2";
 const DEFAULT_SCRIPT_URL="https://script.google.com/macros/s/AKfycbygnbJ7Nml0qQR8e8oPzO8X7_q7Y7FtAVtswByRCnozABE0uUwNGBozhVMietTALK13Gw/exec";
 let people=[]; let sending=false; let adminReady=false; let dataStarted=false;
 const cfg=window.BCC_FIREBASE_CONFIG||{}; const configured=cfg.apiKey&&!String(cfg.apiKey).includes("PASTE_");
-async function loadFirebaseRecipients(user,app){
-  await user.getIdToken(true);
-  const snapshot=await getDocs(collection(getFirestore(app),"members"));
-  people=snapshot.docs.map(d=>({id:d.id,...d.data()}));
+window.addEventListener("bcc-firestore-error",e=>{
+  const err=e.detail||{};
+  show("Firestore access denied ("+(err.code||"unknown")+"). Confirm the Firestore Rules were published for project baptistcitychurch-4491f and that the signed-in user's UID matches the admin UID. Email recipients cannot be verified until this is fixed.");
+});
+window.addEventListener("bcc-data",e=>{
+  if(!adminReady)return;
+  if(e.detail.source==="local"){
+    // A denied Firestore query must not be mistaken for a successful cloud sync.
+    show("Attendee records could not be verified from Firestore. Check the published rules for this Firebase project and the signed-in admin UID. Local records may be incomplete.");
+  }
+  people=e.detail.records||[];
   renderRecipients();
-  show("Loaded "+people.length+" attendees from Firebase. For verified email delivery, open the Google Apps Script Invitation Manager and sync recipients to Sheets.");
-}
-if(!configured){show("Firebase configuration is missing.");}
-else{
-  const firebaseApp=getApps().length?getApp():initializeApp(cfg);
+}); if (!configured) { document.querySelector("main").innerHTML = "<h2>Firebase configuration required for invitations.</h2>"; } else {
+  const firebaseApp=getApps().length ? getApp() : initializeApp(cfg);
   const auth2=getAuth(firebaseApp);
-  onAuthStateChanged(auth2,async user=>{
-    if(!user||user.uid!==ADMIN_UID){adminReady=false;people=[];renderRecipients();location.replace("admin.html");return;}
-    adminReady=true;
-    try{await loadFirebaseRecipients(user,firebaseApp)}
-    catch(err){people=[];renderRecipients();show("Firebase access failed ("+(err.code||"unknown")+"). Confirm the signed-in admin UID and published Firestore Rules. "+err.message)}
-  },err=>show("Firebase authentication failed: "+err.message));
+  onAuthStateChanged(auth2, async u => {
+    if(u && u.uid===ADMIN_UID) {
+      adminReady=true;
+      try {
+        await u.getIdToken(true); // Refresh stale Firebase auth claims before Firestore access.
+        if(!dataStarted){ dataStarted=true; await startBCCData(); }
+      } catch(error) {
+        dataStarted=false;
+        show("Unable to load attendee records ("+(error.code||"unknown")+"). Confirm Firestore rules are published for project baptistcitychurch-4491f. " + (error.message||""));
+      }
+    } else {
+      adminReady=false;
+      people=[];renderRecipients();
+      location.replace("admin.html");
+    }
+  }, error => show("Authentication error: " + (error.code || error.message)));
 }
 window.renderRecipients=renderRecipients;
 function renderRecipients(){const previouslySelected=new Set([...document.querySelectorAll(".pick:checked")].map(c=>c.dataset.id));const withEmail=people.filter(x=>x.email && (x.reminderConsent===true || x.reminderEnabled===true));recipients.innerHTML=withEmail.length?withEmail.map(x=>`<label class="person"><input class="pick" type="checkbox" data-id="${esc(x.id)}" onchange="count()"><span><b>${esc(x.name)}</b><small>${esc(x.email)} • ${esc(x.category||'')}</small></span></label>`).join(''):`<div style="padding:18px" class="muted">No attendees with valid email consent yet.</div>`;document.querySelectorAll(".pick").forEach(c=>{c.checked=previouslySelected.has(c.dataset.id)});count()}
@@ -92,11 +106,29 @@ window.preview=()=>{pName.textContent=eventName.value||"Upcoming Church Event";p
 window.saveUrl=()=>{localStorage.setItem("bcc_apps_script_url",scriptUrl.value.trim());show("Apps Script URL saved.")};scriptUrl.value=localStorage.getItem("bcc_apps_script_url")||DEFAULT_SCRIPT_URL;
 function payload(recs){return {action:"sendInvitations",event:{name:eventName.value,date:eventDate.value,time:eventTime.value,venue:venue.value,message:message.value,rsvp:rsvp.value},recipients:recs.map(x=>({name:x.name,email:x.email,category:x.category}))}}
 async function send(recs){
-  if(!adminReady)return show("Sign in as the Firebase admin first.");
+  if(sending)return;
   const url=scriptUrl.value.trim();
-  if(!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(url))return show("Save the deployed Apps Script /exec URL first.");
-  show("The Apps Script backend uses authenticated google.script.run, not a public POST endpoint. Opening the secure Invitation Manager to send and verify email delivery. Sync Firebase attendees to Sheets there first.");
-  window.open(url,"_blank","noopener,noreferrer");
+  if(!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(url))return show("Enter a valid deployed Google Apps Script /exec URL.");
+  if(!eventName.value.trim()||!eventDate.value)return show("Enter the event name and date first.");
+  if(!recs.length)return show("Select at least one opted-in recipient.");
+  const unique=[...new Map(recs.filter(r=>r.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email)).map(r=>[r.email.trim().toLowerCase(),r])).values()];
+  if (!unique.length) return show("No valid recipient email addresses selected.");
+  if (unique.length > 100) return show("Send at most 100 recipients per batch.");
+  if(!confirm(`Submit ${unique.length} invitation(s) to the church email service?`))return;
+  sending=true;sendBtn.disabled=true;testBtn.disabled=true;show("Sending invitations…");
+  try{
+    const user=getAuth(getApps()[0]).currentUser;
+    if(!user || user.uid!==ADMIN_UID) throw new Error("Admin session expired. Please sign in again.");
+    const idToken=await user.getIdToken();
+    const request={...payload(unique),idToken,requestId:crypto.randomUUID().replaceAll("-","")};
+    // Google Apps Script ContentService redirects responses to a different origin.
+    // A no-cors request avoids misleading browser CORS errors, but cannot confirm delivery.
+    await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(request)});
+    show("Invitation batch submitted (reference: " + request.requestId + "). Delivery cannot be confirmed from this browser. Verify the result in Apps Script → Executions and the sender’s Sent folder before retrying.");
+  }catch(error){
+    console.error("BCC invitation delivery:",error);
+    show("Request failed before confirmation: " + (error.message||"Unknown error") + ". Check the Apps Script deployment and Executions log.");
+  }finally{sending=false;sendBtn.disabled=false;testBtn.disabled=false}
 }
 window.sendSelected=()=>{
   if(!adminReady)return show("Admin authorization required before sending invitations.");

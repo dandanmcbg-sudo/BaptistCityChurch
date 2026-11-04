@@ -738,7 +738,7 @@ function refreshStatus(source){
   const el=document.querySelector(".offline-pill");
   if(!el)return;
   const online=navigator.onLine;
-  el.innerHTML=`<span class="offline-dot"></span>${online ? (source==="cloud"?"Firebase Synced":"Local check-in • online") : "Offline • Changes Saved"}`;
+  el.innerHTML=`<span class="offline-dot"></span>${online ? (source==="cloud"?"Firebase Synced":"Online • Syncing") : "Offline • Changes Saved"}`;
 }
 window.addEventListener("bcc-data",e=>{
   db=e.detail.records || [];

@@ -44,11 +44,6 @@ export async function startBCCData(){
       : persistentLocalCache({tabManager: persistentMultipleTabManager()})
   });
 
-  // Public check-in cannot list private member records under secure Firestore rules.
-  // Keep local UI available; admin pages load the protected collection after auth.
-  if (!document.body.classList.contains("admin-authorized") && !invitationPage) {
-    latest=localRead();source="local";emit();return {mode:"local"};
-  }
   // One-time migration of existing localStorage records into Firestore.
   const migrationKey = "bcc_firebase_migration_v1";
   if (document.body.classList.contains("admin-authorized") && !localStorage.getItem(migrationKey)) {
