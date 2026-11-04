@@ -33,7 +33,6 @@ label{font-size:.78rem;font-weight:700}input,textarea,select{border:1px solid va
 <nav><a href="admin.html">Dashboard</a><a class="active" aria-current="page" href="invitation.html">Invitation Center</a></nav>
 </aside><main>
 <div class="top"><div><h1>Invitation Center</h1><div class="muted">Create and send branded event invitations to saved email addresses.</div></div></div>
-<section class="card" style="margin-bottom:16px"><h2>Google Sheets Email Manager</h2><p class="muted">Use the secure Apps Script invitation manager to load opted-in recipients directly from Google Sheets, without the Firestore listener.</p><a class="btn" style="display:inline-block;text-decoration:none" target="_blank" rel="noopener noreferrer" href="https://script.google.com/macros/s/AKfycbygnbJ7Nml0qQR8e8oPzO8X7_q7Y7FtAVtswByRCnozABE0uUwNGBozhVMietTALK13Gw/exec">Open Google Sheets Invitation Manager</a><p class="muted">The Apps Script deployment must be updated with Code.gs and Manager.html first.</p></section>
 <div class="grid"><div class="editor-column">
 <section class="card"><h2>Upcoming Event</h2><div class="fields">
 <div class="field full"><label>Event Name</label><input id="eventName" placeholder="e.g. Church Anniversary Celebration" oninput="preview()"></div>
@@ -49,7 +48,7 @@ label{font-size:.78rem;font-weight:700}input,textarea,select{border:1px solid va
 <div class="actions"><button class="btn light" id="testBtn" onclick="sendTest()">Send Test Email</button><button class="btn" id="sendBtn" onclick="sendSelected()">Send Invitation to Selected</button></div>
 <div id="status" class="status"></div>
 </section>
-<section class="card"><h2>Email Delivery Settings</h2><div class="field"><label>Deployment URL</label><input id="scriptUrl" placeholder="Paste your Apps Script /exec URL"><div class="muted">Your existing Google Apps Script web app. Delivery requires the backend to be deployed and authorized.</div></div><button class="btn light" style="margin-top:10px" onclick="saveUrl()">Save URL</button></section>
+<input type="hidden" id="scriptUrl" aria-hidden="true">
 </div>
 <div class="preview-column"><section class="card preview-card"><h2>Email Preview</h2><div class="preview"><div class="email">
 <div class="email-head"><img src="assets/bcc-logo.png"><h2 style="margin:10px 0 0">You're Invited</h2><div>Baptist City Church</div></div>
@@ -78,6 +77,7 @@ window.addEventListener("bcc-data",e=>{
   }
   people=e.detail.records||[];
   renderRecipients();
+  if(e.detail.source==="cloud")syncRecipientsToSheets(people);
 }); if (!configured) { document.querySelector("main").innerHTML = "<h2>Firebase configuration required for invitations.</h2>"; } else {
   const firebaseApp=getApps().length ? getApp() : initializeApp(cfg);
   const auth2=getAuth(firebaseApp);
@@ -104,7 +104,23 @@ window.count=()=>selectedCount.textContent=document.querySelectorAll(".pick:chec
 window.selectGroup=g=>{document.querySelectorAll(".pick").forEach(c=>{let p=people.find(x=>x.id===c.dataset.id);c.checked=g==="all"||(g!=="none"&&p?.category===g)});count()}
 window.preview=()=>{pName.textContent=eventName.value||"Upcoming Church Event";pMsg.textContent=message.value||"We would love to have you join us.";pDate.textContent=eventDate.value||"Event date";pTime.textContent=eventTime.value||"Event time";pVenue.textContent=venue.value||"Baptist City Church";pRsvp.style.display=rsvp.value?"inline-block":"none";pRsvp.href=rsvp.value||"#"}
 window.saveUrl=()=>{localStorage.setItem("bcc_apps_script_url",scriptUrl.value.trim());show("Apps Script URL saved.")};scriptUrl.value=localStorage.getItem("bcc_apps_script_url")||DEFAULT_SCRIPT_URL;
-function payload(recs){return {action:"sendInvitations",event:{name:eventName.value,date:eventDate.value,time:eventTime.value,venue:venue.value,message:message.value,rsvp:rsvp.value},recipients:recs.map(x=>({name:x.name,email:x.email,category:x.category}))}}
+let lastSyncSignature="";
+async function syncRecipientsToSheets(records){
+  const url=scriptUrl.value.trim();
+  if(!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec/.test(url))return;
+  const list=records.filter(x=>x.email).map(x=>({id:x.id,name:x.name,email:x.email,category:x.category,reminderConsent:x.reminderConsent===true,reminderEnabled:x.reminderEnabled===true}));
+  const signature=JSON.stringify(list);
+  if(signature===lastSyncSignature)return;
+  try{
+    const u=getAuth().currentUser;
+    if(!u||u.uid!==ADMIN_UID)return;
+    const idToken=await u.getIdToken();
+    await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"syncAttendees",idToken,records:list})});
+    lastSyncSignature=signature;
+    // no-cors gives an opaque response; backend success cannot be confirmed here.
+  }catch(err){console.error("Google Sheets sync request failed",err)}
+}
+function payload(recs){return {action:"sendInvitations",event:{name:eventName.value,date:eventDate.value,time:eventTime.value,venue:venue.value,message:message.value,rsvp:rsvp.value},recipientIds:recs.map(x=>x.id)}}
 async function send(recs){
   if(sending)return;
   const url=scriptUrl.value.trim();
@@ -134,7 +150,20 @@ window.sendSelected=()=>{
   if(!adminReady)return show("Admin authorization required before sending invitations.");
   return send([...document.querySelectorAll(".pick:checked")].map(c=>people.find(x=>x.id===c.dataset.id)).filter(Boolean));
 };
-window.sendTest=()=>{if(!adminReady)return show("Admin authorization required before sending invitations.");let email=prompt("Enter the test email address:");if(email)send([{name:"BCC Admin Test",email,category:"Test"}])}
+window.sendTest=async()=>{
+  if(!adminReady)return show("Admin authorization required.");
+  const email=prompt("Enter the test email address:");
+  if(!email)return;
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return show("Enter a valid email.");
+  const url=scriptUrl.value.trim();
+  if(!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec/.test(url))return show("Save a valid Apps Script /exec URL.");
+  try{
+    const u=getAuth().currentUser;
+    const idToken=await u.getIdToken();
+    await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"testEmail",email,idToken})});
+    show("Test request submitted. Check Apps Script → Executions and your inbox. Browser cannot verify delivery due to Google Apps Script cross-origin restrictions.");
+  }catch(err){show("Test request failed: "+err.message)}
+};
 function show(t){const el=document.getElementById("status");if(el){el.style.display="block";el.textContent=t}} function esc(v){return String(v||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 preview();
 </script></body></html>
