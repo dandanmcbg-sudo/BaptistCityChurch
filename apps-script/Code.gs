@@ -100,6 +100,16 @@ function send_(data){
   if(ids.length<1||ids.length>100)throw Error('Select 1–100 recipients.');
   const requestId=safeText_(data.requestId,80);
   if(!/^[a-zA-Z0-9_-]{8,80}$/.test(requestId))throw Error('Valid unique requestId required.');
+  // Sync selected, explicitly consenting Firebase attendees before lookup.
+  // This prevents a background-sync race or an empty Sheet from blocking sending.
+  // api_() has already verified the Firebase admin ID token.
+  if(Array.isArray(data.records)){
+    if(data.records.length>100)throw Error('Too many recipient records.');
+    const selectedIds=new Set(ids);
+    const safeRecords=data.records.filter(r=>r && selectedIds.has(String(r.id)) && r.reminderConsent===true);
+    sync_(safeRecords);
+    SpreadsheetApp.flush();
+  }
   const allowed=new Map(read_().map(p=>[p.id,p]));
   const chosen=ids.map(id=>allowed.get(id)).filter(Boolean);
   if(!chosen.length)throw Error('No opted-in recipients found in Google Sheets.');

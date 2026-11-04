@@ -99,7 +99,7 @@ window.addEventListener("bcc-data",e=>{
   }, error => show("Authentication error: " + (error.code || error.message)));
 }
 window.renderRecipients=renderRecipients;
-function renderRecipients(){const previouslySelected=new Set([...document.querySelectorAll(".pick:checked")].map(c=>c.dataset.id));const withEmail=people.filter(x=>x.email && (x.reminderConsent===true || x.reminderEnabled===true));recipients.innerHTML=withEmail.length?withEmail.map(x=>`<label class="person"><input class="pick" type="checkbox" data-id="${esc(x.id)}" onchange="count()"><span><b>${esc(x.name)}</b><small>${esc(x.email)} • ${esc(x.category||'')}</small></span></label>`).join(''):`<div style="padding:18px" class="muted">No attendees with valid email consent yet.</div>`;document.querySelectorAll(".pick").forEach(c=>{c.checked=previouslySelected.has(c.dataset.id)});count()}
+function renderRecipients(){const previouslySelected=new Set([...document.querySelectorAll(".pick:checked")].map(c=>c.dataset.id));const withEmail=people.filter(x=>x.email && (x.reminderConsent===true));recipients.innerHTML=withEmail.length?withEmail.map(x=>`<label class="person"><input class="pick" type="checkbox" data-id="${esc(x.id)}" onchange="count()"><span><b>${esc(x.name)}</b><small>${esc(x.email)} • ${esc(x.category||'')}</small></span></label>`).join(''):`<div style="padding:18px" class="muted">No attendees with valid email consent yet.</div>`;document.querySelectorAll(".pick").forEach(c=>{c.checked=previouslySelected.has(c.dataset.id)});count()}
 window.count=()=>selectedCount.textContent=document.querySelectorAll(".pick:checked").length+" selected";
 window.selectGroup=g=>{document.querySelectorAll(".pick").forEach(c=>{let p=people.find(x=>x.id===c.dataset.id);c.checked=g==="all"||(g!=="none"&&p?.category===g)});count()}
 window.preview=()=>{pName.textContent=eventName.value||"Upcoming Church Event";pMsg.textContent=message.value||"We would love to have you join us.";pDate.textContent=eventDate.value||"Event date";pTime.textContent=eventTime.value||"Event time";pVenue.textContent=venue.value||"Baptist City Church";pRsvp.style.display=rsvp.value?"inline-block":"none";pRsvp.href=rsvp.value||"#"}
@@ -162,7 +162,7 @@ async function send(recs){
     const user=getAuth(getApps()[0]).currentUser;
     if(!user || user.uid!==ADMIN_UID) throw new Error("Admin session expired. Please sign in again.");
     const idToken=await user.getIdToken();
-    const request={action:"send",token:idToken,data:{...payload(unique),requestId:crypto.randomUUID().replaceAll("-","")}};
+    const request={action:"send",token:idToken,data:{...payload(unique),records:unique.map(x=>({id:x.id,name:x.name,email:x.email,category:x.category,reminderConsent:x.reminderConsent===true,reminderEnabled:x.reminderEnabled!==false})),requestId:crypto.randomUUID().replaceAll("-","")}};
     // Google Apps Script ContentService redirects responses to a different origin.
     // A no-cors request avoids misleading browser CORS errors, but cannot confirm delivery.
     await fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(request)});
