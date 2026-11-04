@@ -69,13 +69,24 @@ nav a:focus-visible,.nav-signout:focus-visible,.auth-card button:focus-visible{o
 @media(max-width:560px){aside{padding:15px}nav a{font-size:.82rem;padding:10px}main{padding:12px}.panel{padding:14px}.panel-head{flex-wrap:wrap}.controls{width:100%}.controls input{max-width:100%}}
 </style>
 
-</head>
+<style id="bcc-v16-nav">
+.shell > aside{display:flex!important;flex-direction:column!important;min-height:100dvh!important}
+.shell > aside nav{display:flex!important;flex-direction:column!important;gap:5px!important;flex:0 0 auto!important}
+.shell > aside nav a{display:flex!important;align-items:center!important;gap:11px!important;min-height:42px!important}
+.bcc-nav-icon{width:22px;flex:none;display:inline-flex;justify-content:center;align-items:center;font-size:19px;color:#c4b7ff}
+.bcc-side-footer{margin-top:auto!important;padding-top:22px!important;display:flex;flex-direction:column;gap:12px;width:100%}
+.bcc-side-footer .nav-signout{display:flex!important;align-items:center;justify-content:center;gap:9px;width:100%!important;min-height:42px;margin:0!important;border:1px solid #68616b!important;border-radius:10px;background:transparent;color:white;cursor:pointer;font:inherit}
+.bcc-side-footer .nav-signout:hover{background:#352e4b}
+.bcc-side-footer .bcc-footnote{font-size:11px;color:#a9a2ad;text-align:center}
+.shell > aside .side-bottom{display:none!important}
+@media(max-width:760px){.shell > aside{min-height:auto!important;height:auto!important;position:relative!important}.shell > aside nav{flex-direction:row!important;overflow-x:auto!important;gap:5px!important}.shell > aside nav a{white-space:nowrap!important}.bcc-side-footer{margin-top:10px!important;padding-top:0!important;align-items:flex-end}.bcc-side-footer .nav-signout{width:auto!important;padding:9px 16px!important}.bcc-side-footer .bcc-footnote{display:none}}
+</style></head>
 <body>
 
 <div class="shell">
 <aside>
  <div class="brand"><img src="assets/bcc-logo.png"><div><b>Baptist City Church</b><span>Attendance Admin</span></div></div>
- <nav><a href="admin.html" class="active" aria-current="page">Dashboard</a><a href="events.html">Church Planner</a><a href="invitation.html">Invitation Center</a><button type="button" id="adminSignOutBtn" class="nav-signout" hidden>Sign Out</button></nav>
+ <nav><a href="admin.html" class="active" aria-current="page"><span class="bcc-nav-icon" aria-hidden="true">▦</span><span>Dashboard</span></a><a href="events.html"><span class="bcc-nav-icon" aria-hidden="true">▣</span><span>Church Planner</span></a><a href="invitation.html"><span class="bcc-nav-icon" aria-hidden="true">✉</span><span>Invitation Center</span></a></nav><div class="bcc-side-footer"><button type="button" id="adminSignOutBtn" class="nav-signout"><span aria-hidden="true">⇥</span> Sign Out</button><span class="bcc-footnote">Baptist City Church · Administration</span></div>
  <div class="side-bottom">Baptist City Church • Administration</div>
 </aside>
 <main>
