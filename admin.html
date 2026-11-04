@@ -44,6 +44,14 @@ body{background:var(--bcc-bg)!important;color:var(--bcc-ink)!important;font-fami
 .shell > main button:focus-visible,.shell > main a:focus-visible{outline:3px solid #a99aff!important;outline-offset:2px!important}
 @media(max-width:920px){.shell{grid-template-columns:180px minmax(0,1fr)!important}.shell > main{padding:16px!important}}
 @media(max-width:620px){.shell{display:block!important}.shell > aside{height:auto!important;position:relative!important;padding:12px 14px!important}.shell > aside .brand{margin-bottom:10px!important}.shell > aside nav{flex-direction:row!important;overflow-x:auto!important;gap:5px!important}.shell > aside nav a{white-space:nowrap!important;padding:10px!important}.shell > main{padding:12px!important}}
+
+/* v18 premium vector icon system */
+.bcc-nav-icon svg,.nav-signout svg{display:block;flex-shrink:0;transition:transform .18s ease,stroke .18s ease}
+nav a:hover .bcc-nav-icon svg{transform:translateY(-1px)}
+nav a.active .bcc-nav-icon{color:#fff}
+.nav-signout{display:flex;align-items:center;gap:10px}
+.nav-signout svg{width:19px;height:19px}
+button:focus-visible,nav a:focus-visible{outline:3px solid #b8a9ff;outline-offset:3px}
 </style>
 <link rel="manifest" href="manifest.webmanifest">
 <script src="firebase-config.js"></script>
@@ -86,7 +94,7 @@ nav a:focus-visible,.nav-signout:focus-visible,.auth-card button:focus-visible{o
 <div class="shell">
 <aside>
  <div class="brand"><img src="assets/bcc-logo.png"><div><b>Baptist City Church</b><span>Attendance Admin</span></div></div>
- <nav><a href="admin.html" class="active" aria-current="page"><span class="bcc-nav-icon" aria-hidden="true">▦</span><span>Dashboard</span></a><a href="events.html"><span class="bcc-nav-icon" aria-hidden="true">▣</span><span>Church Planner</span></a><a href="invitation.html"><span class="bcc-nav-icon" aria-hidden="true">✉</span><span>Invitation Center</span></a></nav><div class="bcc-side-footer"><button type="button" id="adminSignOutBtn" class="nav-signout"><span aria-hidden="true">⇥</span> Sign Out</button><span class="bcc-footnote">Baptist City Church · Administration</span></div>
+ <nav><a href="admin.html" class="active" aria-current="page"><span class="bcc-nav-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><span>Dashboard</span></a><a href="events.html"><span class="bcc-nav-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M8 14h3v3H8z"/></svg></span><span>Church Planner</span></a><a href="invitation.html"><span class="bcc-nav-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span><span>Invitation Center</span></a></nav><div class="bcc-side-footer"><button type="button" id="adminSignOutBtn" class="nav-signout"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/></svg> Sign Out</button><span class="bcc-footnote">Baptist City Church · Administration</span></div>
  <div class="side-bottom">Baptist City Church • Administration</div>
 </aside>
 <main>
