@@ -61,14 +61,28 @@ function sync_(records){
   });
   return {ok:true,created,updated,skipped};
 }
+function bccEmailDate_(value){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value||''));
+  if(!m)return String(value||'');
+  const y=Number(m[1]),mo=Number(m[2]),d=Number(m[3]);
+  const dt=new Date(Date.UTC(y,mo-1,d));
+  if(dt.getUTCFullYear()!==y||dt.getUTCMonth()!==mo-1||dt.getUTCDate()!==d)return String(value||'');
+  return Utilities.formatDate(dt,'UTC','MMMM d, yyyy');
+}
+function bccEmailTime_(value){
+  const m=/^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(value||''));
+  if(!m)return String(value||'');
+  const h=Number(m[1]);
+  return (h%12||12)+':'+m[2]+' '+(h<12?'AM':'PM');
+}
 function email_(person,event){
   // Email-safe tables and inline styles mirror invitation.html's Email Preview.
   const x=escape_;
   const name=x(person.name||'Guest');
   const title=x(event.name||'Upcoming Church Event');
   const message=x(event.message||'We would love to have you join us.').replace(/\r?\n/g,'<br>');
-  const date=x(event.date||'Event date');
-  const time=x(event.time||'Event time');
+  const date=x(bccEmailDate_(event.date)||'Event date');
+  const time=x(bccEmailTime_(event.time)||'Event time');
   const venue=x(event.venue||'Baptist City Church');
   const rsvp=String(event.rsvp||'').trim();
   const link=/^https:\/\/[^\s<>"']+$/i.test(rsvp)
@@ -87,7 +101,7 @@ function email_(person,event){
     '<h2 style="font-size:20px;margin:7px 0 15px;line-height:1.3;color:#171717">'+title+'</h2>'+
     '<p style="font-size:15px;line-height:1.65;margin:0 0 17px">'+message+'</p>'+
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f7f2ea;border-radius:12px"><tr><td style="padding:16px;font-size:14px;line-height:1.6">'+
-    '<strong>'+date+'</strong><br>'+time+'<br>'+venue+'</td></tr></table>'+link+
+    '&#128197; <strong>Date:</strong> '+date+'<br>&#128336; <strong>Time:</strong> '+time+'<br>&#128205; <strong>Location:</strong> '+venue+'</td></tr></table>'+link+
     '<p style="font-size:13px;color:#786b60;line-height:1.5;margin:23px 0 0">With love,<br>Baptist City Church</p>'+
     '</td></tr></table></td></tr></table></body></html>';
 }
@@ -100,6 +114,16 @@ function send_(data){
   if(ids.length<1||ids.length>100)throw Error('Select 1–100 recipients.');
   const requestId=safeText_(data.requestId,80);
   if(!/^[a-zA-Z0-9_-]{8,80}$/.test(requestId))throw Error('Valid unique requestId required.');
+  // Sync selected, explicitly consenting Firebase attendees before lookup.
+  // This prevents a background-sync race or an empty Sheet from blocking sending.
+  // api_() has already verified the Firebase admin ID token.
+  if(Array.isArray(data.records)){
+    if(data.records.length>100)throw Error('Too many recipient records.');
+    const selectedIds=new Set(ids);
+    const safeRecords=data.records.filter(r=>r && selectedIds.has(String(r.id)) && r.reminderConsent===true);
+    sync_(safeRecords);
+    SpreadsheetApp.flush();
+  }
   const allowed=new Map(read_().map(p=>[p.id,p]));
   const chosen=ids.map(id=>allowed.get(id)).filter(Boolean);
   if(!chosen.length)throw Error('No opted-in recipients found in Google Sheets.');
@@ -130,6 +154,16 @@ function api_(action,data,token){
   if(action==='list')return {ok:true,recipients:read_()};
   if(action==='sync')return sync_(data.records||[]);
   if(action==='send')return send_(data);
+  if(action==='automationStatus'){
+    const requestId=safeText_(data.requestId,80);
+    if(!/^[a-zA-Z0-9_-]{8,80}$/.test(requestId))throw Error('Invalid request ID.');
+    const props=PropertiesService.getScriptProperties();
+    const recent=JSON.parse(props.getProperty('BCC_AUTO_HISTORY')||'[]');
+    const active=ScriptApp.getProjectTriggers().some(t=>t.getHandlerFunction()==='sendSaturdayInvitation');
+    const result={ok:true,active,timezone:'Asia/Manila',schedule:'Saturday approximately 8:00 AM',history:recent.slice(0,30),quota:MailApp.getRemainingDailyQuota()};
+    props.setProperty('BCC_RESULT_'+requestId,JSON.stringify({status:'accepted',kind:'automationStatus',...result}));
+    return result;
+  }
   if(action==='test'){
     const to=safeText_(data.email,254);
     if(!emailValid_(to))throw Error('Valid test email required.');
@@ -190,4 +224,67 @@ function testBCCEmailDelivery(){
   const event={name:'Baptist City Church — Test Invitation',date:'Test event date',time:'Test event time',venue:'Baptist City Church',message:'Greetings from Baptist City Church! This is an HTML email delivery test.',rsvp:''};
   MailApp.sendEmail({to:recipient,subject:'[TEST] You’re Invited — '+event.name,body:'Baptist City Church HTML invitation test.',htmlBody:email_({name:'Guest'},event),name:'Baptist City Church'});
   Logger.log('MailApp accepted one HTML test email to '+recipient);
+}
+
+/** AUTOMATIC INVITATION CENTER — separate from manual Send Invitation.
+ * One-time setup: run setupSaturdayInvitationTrigger() in Apps Script.
+ * Schedule: Saturday ~8 AM Asia/Manila; event: following Sunday.
+ * Source: Google Sheets Attendees, with explicit consent + reminders enabled.
+ * IMPORTANT: Keep Sheets synced from Firebase before Saturday.
+ */
+const BCC_AUTO_INVITATION = Object.freeze({
+  eventName:'Sunday Worship Service',
+  eventTime:'09:00', // Change to the church's confirmed Sunday service time.
+  venue:'Baptist City Church',
+  message:'You are warmly invited to worship with us this Sunday. We look forward to seeing you!\n\n“I was glad when they said unto me, Let us go into the house of the LORD.” — Psalm 122:1 (KJV)'
+});
+function setupSaturdayInvitationTrigger(){
+  ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()==='sendSaturdayInvitation')
+    .forEach(t=>ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('sendSaturdayInvitation').timeBased().onWeekDay(ScriptApp.WeekDay.SATURDAY)
+    .atHour(8).nearMinute(0).everyWeeks(1).inTimezone('Asia/Manila').create();
+  console.log('Saturday invitation trigger installed (approximately 8 AM, Asia/Manila).');
+}
+function sendSaturdayInvitation(){
+  const now=new Date();
+  const day=Utilities.formatDate(now,'Asia/Manila','u'); // 1=Mon, 6=Sat
+  if(day!=='6')return {ok:false,message:'Skipped: not Saturday in Philippine time.'};
+  const today=Utilities.formatDate(now,'Asia/Manila','yyyy-MM-dd');
+  const sunday=new Date(Date.UTC(Number(today.slice(0,4)),Number(today.slice(5,7))-1,Number(today.slice(8,10))+1));
+  const date=Utilities.formatDate(sunday,'UTC','yyyy-MM-dd');
+  const event={name:BCC_AUTO_INVITATION.eventName,date:date,time:BCC_AUTO_INVITATION.eventTime,
+    venue:BCC_AUTO_INVITATION.venue,message:BCC_AUTO_INVITATION.message,rsvp:''};
+  const lock=LockService.getScriptLock();lock.waitLock(30000);
+  try{
+    const props=PropertiesService.getScriptProperties();
+    const key='BCC_AUTO_INVITATION_'+today;
+    const recipients=[...new Map(read_().map(p=>[p.email.trim().toLowerCase(),p])).values()];
+    if(!recipients.length){bccAutoLog_({date:today,eventDate:date,sent:0,failed:0,already:0,status:'no-recipients'});return {ok:false,message:'No opted-in recipients in Google Sheets; nothing sent.'};}
+    const remaining=MailApp.getRemainingDailyQuota();
+    if(remaining<recipients.length){bccAutoLog_({date:today,eventDate:date,sent:0,failed:0,already:0,status:'quota-insufficient'});return {ok:false,message:'Insufficient MailApp quota; nothing sent.'};}
+    let sent=0,failed=0,already=0;
+    recipients.forEach(p=>{
+      const recipientKey=key+'_'+Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,p.email.toLowerCase())).slice(0,30);
+      if(props.getProperty(recipientKey)){already++;return}
+      // Reserve before sending to avoid duplicate messages on trigger retries.
+      props.setProperty(recipientKey,'started:'+new Date().toISOString());
+      try{
+        MailApp.sendEmail({to:p.email,subject:'You’re Invited — '+event.name,
+          body:'You are invited to '+event.name+' on '+bccEmailDate_(event.date)+' at '+bccEmailTime_(event.time)+'.',
+          htmlBody:email_(p,event),name:'Baptist City Church'});
+        props.setProperty(recipientKey,'accepted:'+new Date().toISOString());sent++;
+      }catch(err){failed++;console.error('Saturday invitation delivery error: '+err.message)}
+    });
+    bccAutoLog_({date:today,eventDate:date,sent,failed,already,status:failed?'partial':'accepted'});
+    console.log(JSON.stringify({date:today,eventDate:date,sent,failed,already}));
+    return {ok:failed===0,sent,failed,already,eventDate:date};
+  }finally{lock.releaseLock()}
+}
+
+// Aggregate only. Do not store member names or addresses in dashboard history.
+function bccAutoLog_(entry){
+  const props=PropertiesService.getScriptProperties();
+  const history=JSON.parse(props.getProperty('BCC_AUTO_HISTORY')||'[]');
+  history.unshift({...entry,executedAt:new Date().toISOString()});
+  props.setProperty('BCC_AUTO_HISTORY',JSON.stringify(history.slice(0,40)));
 }
