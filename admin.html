@@ -152,7 +152,18 @@ function fillExtra(x={}){personEmail.value=x.email||'';personMinistry.value=x.mi
 function openAdd(){editing=null;modalTitle.textContent='Add Person';name.value='';category.value='Member';contact.value='';attendance.value=1;last.value=new Date().toISOString().slice(0,10);fillExtra();modal.classList.add('show')}
 function edit(id){let x=db.find(v=>v.id===id);if(!x)return;editing=id;modalTitle.textContent='Edit Record';name.value=x.name||'';category.value=x.category||'Member';contact.value=x.contact||'';attendance.value=x.totalAttendance||0;last.value=x.lastAttended||'';fillExtra(x);modal.classList.add('show')}
 function closeModal(){modal.classList.remove('show')}
-function saveRecord(){let n=name.value.trim();if(!n)return alert('Full name is required.');let old=editing?db.find(x=>x.id===editing):null;let consent=personConsent.checked;let obj={...(old||{}),id:editing||('id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),name:n,category:category.value,contact:contact.value.trim(),email:personEmail.value.trim(),ministry:personMinistry.value.trim(),firstTimeVisitor:personFirstTime.value==='Yes',invitedBy:personInvitedBy.value.trim(),contactMethod:personContactMethod.value,birthday:personBirthday.value,prayerRequest:personPrayerRequest.value.trim(),reminderConsent:consent,reminderEnabled:consent,totalAttendance:Number(attendance.value)||0,lastAttended:last.value,notes:old?.notes||''};if(editing){let i=db.findIndex(x=>x.id===editing);if(i>=0)db[i]=obj}else db.push(obj);save();closeModal()}
+async function saveRecord(){let n=name.value.trim();if(!n)return alert('Full name is required.');let old=editing?db.find(x=>x.id===editing):null;let consent=personConsent.checked;let obj={...(old||{}),id:editing||('id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),name:n,category:category.value,contact:contact.value.trim(),email:personEmail.value.trim(),ministry:personMinistry.value.trim(),firstTimeVisitor:personFirstTime.value==='Yes',invitedBy:personInvitedBy.value.trim(),contactMethod:personContactMethod.value,birthday:personBirthday.value,prayerRequest:personPrayerRequest.value.trim(),reminderConsent:consent,reminderEnabled:consent,totalAttendance:Number(attendance.value)||0,lastAttended:last.value,notes:old?.notes||''};const saveButton=document.querySelector('#modal .actions .btn:not(.light)');
+if(saveButton){saveButton.disabled=true;saveButton.textContent='Saving…'}
+try{
+  if(!window.BCCStore?.upsert) throw new Error('Firebase data module has not loaded. Refresh the page.');
+  await window.BCCStore.upsert(obj);
+  closeModal();
+}catch(error){
+  console.error('Attendee save failed:',error);
+  alert('Unable to save attendee to Firebase: '+(error.message||error));
+}finally{
+  if(saveButton){saveButton.disabled=false;saveButton.textContent='Save Changes'}
+}}
 function del(id){let x=db.find(v=>v.id===id);if(x&&confirm(`Delete ${x.name}'s record?`)){db=db.filter(v=>v.id!==id);if(window.BCCStore)window.BCCStore.remove(id);save()}}
 function clearAll(){if(confirm('Clear ALL attendance records?')&&confirm('Final confirmation: this cannot be undone without a backup.')){if(window.BCCStore)window.BCCStore.clear();db=[];save()}}
 function exportCSV(){if(!db.length)return alert('No records to export.');let csv='Full Name,Category,Contact Number,Total Attendance,Last Attended,Notes\n'+db.map(x=>[x.name,x.category,x.contact||'',x.totalAttendance||0,x.lastAttended||'',x.notes||''].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='BCC_Attendance_Backup_'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(a.href)}
@@ -182,7 +193,7 @@ render();
 <script type="module">
 import {startBCCData,upsertBCCRecord,removeBCCRecord,clearBCCRecords} from "./firebase-data.js";
 window.BCCStore={
- remove:removeBCCRecord,
+ upsert:upsertBCCRecord,\n remove:removeBCCRecord,
  clear:clearBCCRecords,
  syncAll(records){records.forEach(r=>upsertBCCRecord(r))}
 };

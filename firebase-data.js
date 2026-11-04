@@ -72,19 +72,12 @@ export async function startBCCData(){
 
 export function getBCCRecords(){ return latest.length ? latest : localRead(); }
 
-export function upsertBCCRecord(record){
+export async function upsertBCCRecord(record){
   if (!record.id) record.id = "id_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
-  // Immediate local mirror keeps UI responsive even before server ack.
-  const arr = getBCCRecords().slice();
-  const i = arr.findIndex(x => x.id === record.id);
-  if (i >= 0) arr[i] = {...arr[i], ...record}; else arr.push(record);
-  latest = arr; localWrite(arr); emit();
-
-  if (db) {
-    // Intentionally not awaited: offline writes are queued in Firestore persistent cache.
-    setDoc(doc(db,"members",record.id), {...record, updatedAt:serverTimestamp()}, {merge:true})
-      .catch(console.error);
-  }
+  if (!configured) throw new Error("Firebase is not configured.");
+  if (!db) throw new Error("Firebase connection is not ready. Refresh and sign in again.");
+  // Wait for the server acknowledgement before reporting a successful save.
+  await setDoc(doc(db,"members",record.id), {...record, updatedAt:serverTimestamp()}, {merge:true});
   return record.id;
 }
 
