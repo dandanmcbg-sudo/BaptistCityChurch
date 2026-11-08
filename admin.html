@@ -206,7 +206,34 @@ function addSyncBadge(source){
  if(!b){b=document.createElement("div");b.id="syncBadge";b.className="small";document.querySelector(".top>div").appendChild(b);}
  b.textContent=navigator.onLine?(source==="cloud"?"● Firebase synced":"● Online • syncing"):"● Offline • changes queued";
 }
-window.addEventListener("bcc-data",e=>{db=e.detail.records||[];render();addSyncBadge(e.detail.source)});
+// One-time, idempotent first-attendance repair for existing zero-count records.
+// Only the approved, signed-in admin can run it. Each write is confirmed by Firestore.
+const bccBackfillAttempted = new Set();
+let bccBackfillRunning = false;
+async function bccBackfillFirstAttendance(records, source){
+ if(source !== "cloud" || !document.body.classList.contains("admin-authorized") || bccBackfillRunning) return;
+ const pending = records.filter(r => r.id && Number(r.totalAttendance || 0) === 0 && !bccBackfillAttempted.has(r.id));
+ if(!pending.length) return;
+ bccBackfillRunning = true;
+ let success = 0, failed = 0;
+ const badge = document.getElementById("syncBadge");
+ try {
+  for(const record of pending){
+   bccBackfillAttempted.add(record.id);
+   if(badge) badge.textContent = `● Recording first attendance ${success + failed + 1}/${pending.length}…`;
+   const timestamp = record.createdAt || record.registrationDate || record.registeredAt;
+   let originalDate = "";
+   if(typeof timestamp === "string" && /^\d{4}-\d{2}-\d{2}/.test(timestamp)) originalDate=timestamp.slice(0,10);
+   else if(timestamp && typeof timestamp.toDate === "function") originalDate=timestamp.toDate().toLocaleDateString("en-CA",{timeZone:"Asia/Manila"});
+   const today = new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Manila"});
+   const corrected = {...record, totalAttendance:1, lastAttended: record.lastAttended || originalDate || today};
+   try { await upsertBCCRecord(corrected); success++; }
+   catch(error){ failed++; console.error("First attendance repair failed:",record.id,error); }
+  }
+  if(badge) badge.textContent = failed ? `● ${success} first attendance records saved; ${failed} failed (check Firebase permissions)` : `● ${success} first attendance records saved to Firebase`;
+ } finally {bccBackfillRunning = false;}
+}
+window.addEventListener("bcc-data",e=>{db=e.detail.records||[];render();addSyncBadge(e.detail.source);bccBackfillFirstAttendance(db,e.detail.source)});
 window.addEventListener("bcc-network",()=>addSyncBadge("cache"));
 window.BCCStartAdminData = async () => { await startBCCData(); addSyncBadge("cache"); };
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(console.error);
