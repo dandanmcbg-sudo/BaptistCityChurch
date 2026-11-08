@@ -299,6 +299,14 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         </div><div style="margin-left:auto;display:flex;gap:8px;align-items:center;"><a href="admin.html" style="text-decoration:none;background:#171717;color:white;padding:10px 14px;border-radius:10px;font-size:.82rem;font-weight:700;">Admin Dashboard</a><div class="offline-pill" style="margin-left:0"><span class="offline-dot"></span>Offline Ready</div></div>
     </header>
 
+<style id="bcc-safe-search-overlay">
+.bcc-checkin-search{position:relative;min-width:0}
+.bcc-checkin-suggestions{position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:1000;max-height:240px;overflow-y:auto;background:#fff;border:1px solid #d8cbbb;border-radius:12px;box-shadow:0 14px 35px rgba(32,28,24,.16);padding:4px}
+.bcc-checkin-suggestions[hidden]{display:none!important}
+.bcc-checkin-option{display:block;width:100%;padding:11px 12px;text-align:left;background:transparent!important;color:#1b1b1b!important;border:0!important;border-radius:8px;cursor:pointer;font:inherit}
+.bcc-checkin-option:hover,.bcc-checkin-option:focus{background:#f3eee8!important;outline:none}
+.bcc-checkin-option small{color:#736b63;margin-left:6px}
+</style>
     <!-- Separate attendance check-in from new attendee registration -->
     <div class="bcc-tabs" role="tablist" aria-label="Attendance actions">
       <button type="button" class="bcc-tab active" id="checkinTab" onclick="switchBCCForm('checkin')">Sunday Check-in</button>
@@ -308,7 +316,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
       <h3>Sunday Check-in</h3>
       <p class="bcc-help">For existing attendees. Search and select a saved attendee to record today's attendance. No need to re-enter their personal information.</p>
       <form id="quickCheckinForm" class="bcc-fields">
-        <div class="form-group"><label for="checkinPerson">Find attendee</label><input id="checkinPerson" placeholder="Type at least 3 letters to search..." required autocomplete="off" aria-controls="checkinMatches" aria-expanded="false"><input type="hidden" id="checkinSelectedId"><div id="checkinMatches" role="listbox" style="display:none;max-height:220px;overflow:auto;border:1px solid #d1d5db;border-radius:10px;margin-top:6px"></div></div>
+        <div class="form-group bcc-checkin-search"><label for="checkinPerson">Find attendee</label><input id="checkinPerson" placeholder="Search registered attendee..." required autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="bccCheckinSuggestions"><div id="bccCheckinSuggestions" class="bcc-checkin-suggestions" role="listbox" hidden></div></div>
         <div class="form-group"><label for="checkinDate">Attendance date</label><input id="checkinDate" type="date" required></div>
         <button type="submit">Mark Present</button>
       </form>
@@ -316,7 +324,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
     </div>
     <div class="card" id="createPanel" hidden>
       <h3>Create Attendee Record</h3>
-      <p class="bcc-help">Use this form only when adding a new member, visitor, or guest. Your registration automatically counts as your first attendance.</p>
+      <p class="bcc-help">Use this form only when adding a new member, visitor, or guest. The attendance check-in is handled separately.</p>
       <form id="attendanceForm" class="bcc-fields">
         <div class="form-group"><label for="fullName">Full Name *</label><input type="text" id="fullName" required placeholder="Type attendee name..."></div>
         <div class="form-group"><label for="category">Category</label><select id="category"><option>Member</option><option>Visitor</option><option>Guest</option></select></div>
@@ -478,46 +486,79 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
       document.getElementById('createTab').classList.toggle('active', view === 'create');
       if(view === 'checkin') refreshBCCNames();
     }
-    let publicNames = [];
-    function availableNames() {
-      const all = [...db.map(p=>({id:p.id,name:p.name,category:p.category})),...publicNames];
-      return [...new Map(all.filter(p=>p.id&&p.name).map(p=>[p.id,p])).values()];
-    }
-    function refreshBCCNames() { filterBCCNames(); }
-    function filterBCCNames() {
-      const input=document.getElementById('checkinPerson'), list=document.getElementById('checkinMatches');
-      const q=input.value.trim().toLocaleLowerCase();
+    let selectedBCCCheckinId = null;
+    function refreshBCCNames() {
+      const input = document.getElementById('checkinPerson');
+      const list = document.getElementById('bccCheckinSuggestions');
+      if (!input || !list) return;
+      const query = input.value.trim().toLocaleLowerCase();
       list.replaceChildren();
-      if(q.length<3){list.style.display='none';input.setAttribute('aria-expanded','false');return;}
-      const matches=availableNames().filter(p=>p.name.toLocaleLowerCase().includes(q)).slice(0,20);
-      matches.forEach(p=>{
-        const btn=document.createElement('button'); btn.type='button';btn.setAttribute('role','option');
-        btn.textContent=`${p.name} (${p.category||'Attendee'})`;
-        btn.style.cssText='display:block;width:100%;text-align:left;background:transparent;color:inherit;border:0;padding:11px;cursor:pointer';
-        btn.addEventListener('click',()=>{input.value=p.name;document.getElementById('checkinSelectedId').value=p.id;list.style.display='none';input.setAttribute('aria-expanded','false');document.getElementById('checkinFeedback').textContent=`Selected: ${p.name}`;});
-        list.appendChild(btn);
+      const matches = query ? db.filter(p => String(p.name || '').toLocaleLowerCase().includes(query)).slice(0, 25) : [];
+      matches.forEach(person => {
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'bcc-checkin-option';
+        button.setAttribute('role','option');
+        button.append(document.createTextNode(person.name || 'Unnamed attendee'));
+        const cat = document.createElement('small'); cat.textContent = '(' + (person.category || 'Attendee') + ')'; button.append(cat);
+        button.addEventListener('click', () => {
+          selectedBCCCheckinId = person.id;
+          input.value = person.name;
+          list.hidden = true;
+          input.setAttribute('aria-expanded','false');
+        });
+        list.append(button);
       });
-      if(!matches.length){const empty=document.createElement('div');empty.textContent='No matching registered attendees';empty.style.padding='12px';list.appendChild(empty);}
-      list.style.display='block';input.setAttribute('aria-expanded','true');
+      list.hidden = matches.length === 0;
+      input.setAttribute('aria-expanded', String(matches.length > 0));
     }
-    document.getElementById('checkinPerson').addEventListener('input',()=>{document.getElementById('checkinSelectedId').value='';filterBCCNames();});
-    window.addEventListener('bcc-directory',e=>{publicNames=e.detail||[];filterBCCNames();});
+    document.getElementById('checkinPerson').addEventListener('input', () => {
+      selectedBCCCheckinId = null;
+      refreshBCCNames();
+    });
+    document.getElementById('checkinPerson').addEventListener('focus', refreshBCCNames);
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.bcc-checkin-search')) {
+        document.getElementById('bccCheckinSuggestions').hidden = true;
+        document.getElementById('checkinPerson').setAttribute('aria-expanded','false');
+      }
+    });
     document.getElementById('checkinDate').value = bccTodayLocal();
     document.getElementById('quickCheckinForm').addEventListener('submit', async function(e) {
       e.preventDefault();
-      const id=document.getElementById('checkinSelectedId').value;
-      const date=document.getElementById('checkinDate').value;
-      const feedback=document.getElementById('checkinFeedback');
-      const person=availableNames().find(p=>p.id===id);
-      if(!person){feedback.textContent='Type at least 3 letters and select an attendee from the dropdown.';return;}
-      if(date!==bccTodayLocal()){feedback.textContent='Public check-in is available for today only. Ask an admin to correct past attendance.';return;}
-      const btn=this.querySelector('[type=submit]');btn.disabled=true;feedback.textContent='Saving attendance…';
+      const input = document.getElementById('checkinPerson');
+      const name = input.value.trim();
+      const date = document.getElementById('checkinDate').value;
+      const feedback = document.getElementById('checkinFeedback');
+      const matches = selectedBCCCheckinId
+        ? db.filter(p => p.id === selectedBCCCheckinId && p.name === name)
+        : db.filter(p => String(p.name || '').toLocaleLowerCase() === name.toLocaleLowerCase());
+      if(matches.length !== 1) {
+        feedback.textContent = matches.length ? 'Multiple matching records. Please select the exact attendee from the dropdown.' : 'Please select a registered attendee from the dropdown.';
+        return;
+      }
+      const person = matches[0];
+      if (!date) { feedback.textContent = 'Choose an attendance date.'; return; }
+      if (person.lastAttended === date) {
+        feedback.textContent = 'Already checked in on this date. No duplicate attendance added.';
+        return;
+      }
+      if (!window.BCCStore?.upsert) { feedback.textContent = 'Database is still connecting. Please try again.'; return; }
+      const submit = this.querySelector('[type="submit"]');
+      if (submit.disabled) return;
+      submit.disabled = true;
       try {
-        await window.BCCStore.checkin(id,date);
-        feedback.textContent=`${person.name} checked in successfully for ${date}.`;
-        this.reset();document.getElementById('checkinSelectedId').value='';document.getElementById('checkinDate').value=bccTodayLocal();
-      }catch(err){console.error(err);feedback.textContent=err.code==='already-checked-in'?'Already checked in today. No duplicate attendance added.':'Unable to save check-in. Please retry or ask an admin.';}
-      finally{btn.disabled=false;}
+        const updated = {...person, totalAttendance:(Number(person.totalAttendance) || 0) + 1, lastAttended:date};
+        await window.BCCStore.upsert(updated);
+        Object.assign(person, updated);
+        renderTable();
+        feedback.textContent = `${person.name} marked present for ${date}.`;
+        this.reset(); selectedBCCCheckinId = null;
+        document.getElementById('checkinDate').value = bccTodayLocal();
+        refreshBCCNames();
+      } catch (error) {
+        console.error('BCC check-in save failed:',error);
+        feedback.textContent = 'Check-in was not saved. Please retry after checking your connection.';
+      } finally { submit.disabled = false; }
     });
     document.getElementById('attendanceForm').addEventListener('submit', async function(e) {
       e.preventDefault();
@@ -758,11 +799,10 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
 
 
 <script type="module">
-import {startBCCData,getBCCRecords,upsertBCCRecord,removeBCCRecord,checkinBCCRecord,startBCCDirectory} from "./firebase-data.js";
+import {startBCCData,getBCCRecords,upsertBCCRecord,removeBCCRecord} from "./firebase-data.js";
 window.BCCStore = {
   remove: removeBCCRecord,
   upsert: upsertBCCRecord,
-  checkin: checkinBCCRecord,
   syncAll(records){ records.forEach(r=>upsertBCCRecord(r)); }
 };
 function refreshStatus(source){
@@ -777,7 +817,6 @@ window.addEventListener("bcc-data",e=>{
 });
 window.addEventListener("bcc-network",()=>refreshStatus("cache"));
 await startBCCData();
-startBCCDirectory().catch(console.error);
 refreshStatus("cache");
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(console.error);
 </script>
