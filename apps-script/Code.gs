@@ -140,7 +140,7 @@ function send_(data){
   let sent=0,failed=0;
   const recipientResults=[];
   chosen.forEach(p=>{
-    try{MailApp.sendEmail({to:p.email,subject:'You’re Invited — '+event.name,body:'You are invited to '+event.name+' at Baptist City Church.',htmlBody:email_(p,event),name:'Baptist City Church'});sent++;recipientResults.push({name:p.name,email:p.email,status:'accepted by MailApp'})}
+    try{MailApp.sendEmail({to:p.email,subject:'You’re Invited — '+event.name,body:'Hello '+(p.name||'Friend')+',\n\nYou are warmly invited to '+event.name+'.\nDate: '+(event.date||'To be announced')+'\nTime: '+(event.time||'To be announced')+'\nVenue: '+(event.venue||'Baptist City Church')+'\n\n'+(event.message||'We would love to see you there.')+'\n\nBaptist City Church',htmlBody:email_(p,event),name:'Baptist City Church'});sent++;recipientResults.push({name:p.name,email:p.email,status:'accepted by MailApp'})}
     catch(err){failed++;recipientResults.push({name:p.name,email:p.email,status:'failed',error:String(err.message||'MailApp error').slice(0,120)});console.error('Mail delivery failed: '+err.message)}
   });
   PropertiesService.getScriptProperties().setProperty('BCC_SENT_'+requestId,JSON.stringify({status:'finished',sent,failed,at:new Date().toISOString()}));

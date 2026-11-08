@@ -203,11 +203,11 @@ async function verifyDelivery(url,id,label){
     if(attempt)await new Promise(r=>setTimeout(r,1800));
     const result=await readDeliveryStatus(url,id);
     if(!result||result.status==="unknown"||result.status==="processing")continue;
-    if(result.status==="accepted"){recordDelivery(id,result);return show(label+": MailApp accepted "+result.sent+" email(s). Check inbox and Spam for actual delivery. Ref: "+id)}
-    if(result.status==="partial"){recordDelivery(id,result);return show(label+": accepted "+result.sent+", failed "+result.failed+". Ref: "+id)}
-    if(result.status==="failed"){recordDelivery(id,result);return show(label+" failed: "+(result.message||"Backend error")+". Ref: "+id)}
+    if(result.status==="accepted"){recordDelivery(id,result);return show("Invitation sent to "+result.sent+" recipient(s).")}
+    if(result.status==="partial"){recordDelivery(id,result);return show("Invitations sent: "+result.sent+". Failed: "+result.failed+". See sending history for details.")}
+    if(result.status==="failed"){recordDelivery(id,result);return show("Invitation sending failed: "+(result.message||"Please review sending history."))}
   }
-  show(label+" submitted, but backend status is unverified. Do not retry yet; check Apps Script logs. Ref: "+id);
+  show("Sending status is still being verified. Do not resend yet; check sending history or Apps Script logs.");
 }
 
 function recordDelivery(id,result){
