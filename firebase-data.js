@@ -3,7 +3,7 @@ import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebase
 import {
   initializeFirestore, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, setDoc, deleteDoc, onSnapshot, getDocs,
-  serverTimestamp
+  serverTimestamp, runTransaction
 } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
 
 const cfg = window.BCC_FIREBASE_CONFIG || {};
@@ -79,6 +79,23 @@ export async function upsertBCCRecord(record){
   // Wait for the server acknowledgement before reporting a successful save.
   await setDoc(doc(db,"members",record.id), {...record, updatedAt:serverTimestamp()}, {merge:true});
   return record.id;
+}
+
+export async function checkinBCCRecord(id, date){
+  if (!configured || !db) throw new Error('Firebase connection is unavailable.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Invalid attendance date.');
+  // Atomic server-side transaction prevents two simultaneous check-ins overwriting each other.
+  return runTransaction(db, async transaction => {
+    const ref = doc(db, 'members', id);
+    const snap = await transaction.get(ref);
+    if (!snap.exists()) throw new Error('Attendee record was not found on Firebase.');
+    const record = snap.data();
+    if (record.lastAttended === date) throw new Error('Already checked in for this date.');
+    transaction.update(ref, {
+      totalAttendance: (Number(record.totalAttendance) || 0) + 1,
+      lastAttended: date
+    });
+  });
 }
 
 export function removeBCCRecord(id){

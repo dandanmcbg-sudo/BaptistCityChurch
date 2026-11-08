@@ -1,0 +1,9 @@
+{
+  "version": "v30",
+  "title": "Baptist City Church \u2014 Latest Update",
+  "changes": [
+    "Check-in now waits for a confirmed Firebase transaction and shows actual save failures instead of false success.",
+    "Duplicate attendance for the same date is blocked.",
+    "Original website features and project files preserved."
+  ]
+}

@@ -13,7 +13,7 @@ service cloud.firestore {
           'id', 'name', 'category', 'email', 'contact', 'ministry',
           'firstTimeVisitor', 'invitedBy', 'contactMethod', 'birthday',
           'prayerRequest', 'reminderConsent', 'reminderEnabled',
-          'totalAttendance', 'lastAttended', 'createdAt', 'notes', 'updatedAt'
+          'totalAttendance', 'lastAttended', 'notes', 'updatedAt'
         ])
         && d.keys().hasAll(['name', 'category', 'totalAttendance'])
         && d.name is string
