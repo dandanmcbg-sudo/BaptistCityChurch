@@ -508,7 +508,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
       this.reset();
       document.getElementById('checkinDate').value = bccTodayLocal();
     });
-    document.getElementById('attendanceForm').addEventListener('submit', function(e) {
+    document.getElementById('attendanceForm').addEventListener('submit', async function(e) {
       e.preventDefault();
       const name = document.getElementById('fullName').value.trim();
       const email = document.getElementById('email').value.trim();
@@ -518,6 +518,8 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         feedback.textContent = 'This name already exists. Use Sunday Check-in instead, or ask admin to edit the existing record.';
         return;
       }
+      const submitButton = this.querySelector('[type=submit]');
+      if (submitButton?.disabled) return;
       const reminderConsent = document.getElementById('reminderConsent').checked;
       if(reminderConsent && !email) {
         feedback.textContent = 'Enter an email address if you want email reminders, or uncheck email consent.';
@@ -536,14 +538,30 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         birthday:document.getElementById('birthday').value,
         prayerRequest:document.getElementById('prayerRequest').value.trim(),
         reminderConsent,reminderEnabled:reminderConsent,
-        totalAttendance:0,lastAttended:'',notes:''
+        totalAttendance:1,lastAttended:bccTodayLocal(),notes:''
       };
-      db.push(person);
-      saveDB();
-      if(reminderConsent && email && typeof syncAttendeeToReminderBackend === 'function') syncAttendeeToReminderBackend(person);
-      this.reset();
-      feedback.textContent = `${name} created. Use Sunday Check-in to mark attendance.`;
-      refreshBCCNames();
+      if (!window.BCCStore?.upsert) {
+        feedback.textContent = 'Database is still connecting. Please wait and try again.';
+        return;
+      }
+      if (submitButton) submitButton.disabled = true;
+      feedback.textContent = 'Saving registration and first attendance…';
+      try {
+        await window.BCCStore.upsert(person);
+        if (!db.some(p => p.id === person.id)) db.push(person);
+        renderTable();
+        if(reminderConsent && email && typeof syncAttendeeToReminderBackend === 'function') {
+          Promise.resolve(syncAttendeeToReminderBackend(person)).catch(console.error);
+        }
+        this.reset();
+        feedback.textContent = `${name} registered successfully. First attendance recorded for ${person.lastAttended} (1 attendance).`;
+        refreshBCCNames();
+      } catch(error) {
+        console.error('BCC registration failed:', error);
+        feedback.textContent = 'Registration could not be saved. Please check your connection and try again. No attendance was recorded.';
+      } finally {
+        if (submitButton) submitButton.disabled = false;
+      }
     });
 
     function deleteRecord(id) {
@@ -732,6 +750,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
 import {startBCCData,getBCCRecords,upsertBCCRecord,removeBCCRecord} from "./firebase-data.js";
 window.BCCStore = {
   remove: removeBCCRecord,
+  upsert: upsertBCCRecord,
   syncAll(records){ records.forEach(r=>upsertBCCRecord(r)); }
 };
 function refreshStatus(source){

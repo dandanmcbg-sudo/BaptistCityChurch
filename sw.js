@@ -1,4 +1,4 @@
-const CACHE="bcc-attendance-lease-fix-2026-11-03-1914-v1";
+const CACHE="bcc-attendance-first-checkin-persistent-login-2026-11-08-v1";
 const CORE=["./","./index.html","./admin.html","./firebase-config.js","./firebase-data.js","./assets/bcc-logo.png"];
 self.addEventListener("install",e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting())));
 self.addEventListener("activate",e=>e.waitUntil((async()=>{for(const k of await caches.keys()){if(k!==CACHE&&k.startsWith("bcc-attendance-"))await caches.delete(k);}await self.clients.claim();})()));

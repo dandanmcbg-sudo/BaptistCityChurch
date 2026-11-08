@@ -20,7 +20,9 @@ service cloud.firestore {
         && d.name.size() > 0 && d.name.size() <= 150
         && d.category in ['Member', 'Visitor', 'Guest']
         && d.totalAttendance is int
-        && d.totalAttendance == 0
+        && d.totalAttendance == 1
+        && d.lastAttended is string
+        && d.lastAttended.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")
         && (!('email' in d) || (d.email is string && d.email.size() <= 254))
         && (!('contact' in d) || (d.contact is string && d.contact.size() <= 40))
         && (!('prayerRequest' in d) || (d.prayerRequest is string && d.prayerRequest.size() <= 2000))

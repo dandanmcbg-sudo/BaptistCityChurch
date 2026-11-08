@@ -215,7 +215,7 @@ if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").cat
 
 <script type="module">
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
 
 const ADMIN_UID = "tSirLJ49mPTM2wo7kpmAxbqT7Rj2";
 const AUTH_ERRORS = {
@@ -276,6 +276,7 @@ function showGate(message="Admin sign in required.") {
           msg.textContent="Firebase Authentication is not initialized. Check the Firebase configuration.";
           return;
         }
+        await setPersistence(auth, browserLocalPersistence);
         const result=await signInWithEmailAndPassword(auth,email,password);
         if(result.user.uid !== ADMIN_UID) {
           msg.textContent="This Firebase user is not the approved admin. Check the UID in Authentication → Users.";
@@ -302,6 +303,8 @@ if (!configured) {
   try {
     app = getApps().length ? getApps()[0] : initializeApp(cfg);
     auth = getAuth(app);
+    // Keep the admin signed in across refreshes and browser restarts until explicit sign-out.
+    await setPersistence(auth, browserLocalPersistence);
   } catch (error) {
     console.error("Firebase initialization:", error);
     showGate("Firebase could not initialize: " + (error.code || error.message));
