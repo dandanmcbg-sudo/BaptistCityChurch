@@ -84,9 +84,9 @@ button:focus-visible,nav a:focus-visible{outline:3px solid #b8a9ff;outline-offse
 </div></section>
 <section class="card"><h2>Recipients</h2>
 <div class="actions" style="margin:0 0 12px"><button class="btn light" onclick="selectGroup('all')">All with Email</button><button class="btn light" onclick="selectGroup('Member')">Members</button><button class="btn light" onclick="selectGroup('Visitor')">Visitors</button><button class="btn light" onclick="selectGroup('Guest')">Guests</button><button class="btn light" onclick="selectGroup('none')">Clear</button></div>
-<div id="recipients" class="recipient-list"></div><div id="selectedCount" class="muted" style="margin-top:8px">0 selected</div><p class="muted">Only attendees who opted in to email invitations are eligible. Delivery requests require an authorized admin session.</p>
+<div class="field" style="margin-bottom:10px"><label for="recipientSearch">Search recipients</label><input id="recipientSearch" placeholder="Search name or email…" oninput="renderRecipients()"></div><div id="recipientSummary" class="muted" style="margin-bottom:8px"></div><div id="recipients" class="recipient-list"></div><div id="selectedCount" class="muted" style="margin-top:8px">0 selected</div><p class="muted">Only attendees who opted in to email invitations are eligible. Delivery requests require an authorized admin session.</p>
 <div class="actions"><button class="btn light" id="testBtn" onclick="sendTest()">Send Test Email</button><button class="btn" id="sendBtn" onclick="sendSelected()">Send Invitation to Selected</button></div>
-<div id="status" class="status"></div>
+<div id="status" class="status"></div><div id="deliveryHistory" style="margin-top:12px" aria-live="polite"></div>
 </section>
 <input type="hidden" id="scriptUrl" aria-hidden="true">
 </div>
@@ -140,9 +140,19 @@ window.addEventListener("bcc-data",e=>{
   }, error => show("Authentication error: " + (error.code || error.message)));
 }
 window.renderRecipients=renderRecipients;
-function renderRecipients(){const previouslySelected=new Set([...document.querySelectorAll(".pick:checked")].map(c=>c.dataset.id));const withEmail=people.filter(x=>x.email && (x.reminderConsent===true));recipients.innerHTML=withEmail.length?withEmail.map(x=>`<label class="person"><input class="pick" type="checkbox" data-id="${esc(x.id)}" onchange="count()"><span><b>${esc(x.name)}</b><small>${esc(x.email)} • ${esc(x.category||'')}</small></span></label>`).join(''):`<div style="padding:18px" class="muted">No attendees with valid email consent yet.</div>`;document.querySelectorAll(".pick").forEach(c=>{c.checked=previouslySelected.has(c.dataset.id)});count()}
+function eligible(p){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(p.email||"").trim()) && p.reminderConsent===true}
+function renderRecipients(){
+ const previouslySelected=new Set([...document.querySelectorAll(".pick:checked")].map(c=>c.dataset.id));
+ const query=(document.getElementById("recipientSearch")?.value||"").trim().toLowerCase();
+ const all=people.filter(x=>String(x.email||"").trim());
+ const filtered=all.filter(x=>(String(x.name||"")+" "+String(x.email||"")).toLowerCase().includes(query));
+ const allowed=all.filter(eligible).length;
+ document.getElementById("recipientSummary").textContent=`${all.length} with email • ${allowed} opted in • ${all.length-allowed} unavailable for invitations`;
+ recipients.innerHTML=filtered.length?filtered.map(x=>`<label class="person"><input class="pick" type="checkbox" data-id="${esc(x.id)}" onchange="count()" ${eligible(x)?"":"disabled"}><span><b>${esc(x.name)}</b><small>${esc(x.email)} • ${esc(x.category||"")} ${eligible(x)?"":"• Consent required / invalid email"}</small></span></label>`).join(""):`<div style="padding:18px" class="muted">No matching attendees with email.</div>`;
+ document.querySelectorAll(".pick").forEach(c=>{c.checked=!c.disabled&&previouslySelected.has(c.dataset.id)});count();
+}
 window.count=()=>selectedCount.textContent=document.querySelectorAll(".pick:checked").length+" selected";
-window.selectGroup=g=>{document.querySelectorAll(".pick").forEach(c=>{let p=people.find(x=>x.id===c.dataset.id);c.checked=g==="all"||(g!=="none"&&p?.category===g)});count()}
+window.selectGroup=g=>{document.querySelectorAll(".pick").forEach(c=>{let p=people.find(x=>x.id===c.dataset.id);c.checked=!c.disabled&&(g==="all"||(g!=="none"&&p?.category===g))});count()}
 function bccPrettyDate(value){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(value||""))return "Select a date";
   const [y,m,d]=value.split("-").map(Number);
@@ -193,11 +203,17 @@ async function verifyDelivery(url,id,label){
     if(attempt)await new Promise(r=>setTimeout(r,1800));
     const result=await readDeliveryStatus(url,id);
     if(!result||result.status==="unknown"||result.status==="processing")continue;
-    if(result.status==="accepted")return show(label+": MailApp accepted "+result.sent+" email(s). Check inbox and Spam for actual delivery. Ref: "+id);
-    if(result.status==="partial")return show(label+": accepted "+result.sent+", failed "+result.failed+". Check Apps Script logs. Ref: "+id);
-    if(result.status==="failed")return show(label+" failed: "+(result.message||"Backend error")+". Ref: "+id);
+    if(result.status==="accepted"){recordDelivery(id,result);return show(label+": MailApp accepted "+result.sent+" email(s). Check inbox and Spam for actual delivery. Ref: "+id)}
+    if(result.status==="partial"){recordDelivery(id,result);return show(label+": accepted "+result.sent+", failed "+result.failed+". Ref: "+id)}
+    if(result.status==="failed"){recordDelivery(id,result);return show(label+" failed: "+(result.message||"Backend error")+". Ref: "+id)}
   }
   show(label+" submitted, but backend status is unverified. Do not retry yet; check Apps Script logs. Ref: "+id);
+}
+
+function recordDelivery(id,result){
+ const box=document.getElementById("deliveryHistory");if(!box)return;
+ const items=Array.isArray(result.recipients)?result.recipients:[];
+ box.innerHTML='<h3 style="margin:8px 0">Latest sending results</h3><p class="muted">Accepted means submitted to MailApp, not inbox delivery confirmation.</p>'+(items.length?items.map(r=>`<div class="person"><span><b>${esc(r.name||"Recipient")}</b><small>${esc(r.email||"")} • ${esc(r.status||"unknown")}${r.error?" • "+esc(r.error):""}</small></span></div>`).join(""):`<div class="muted">${esc(result.sent||0)} accepted; ${esc(result.failed||0)} failed. Individual results require the updated Apps Script deployment.</div>`);
 }
 function payload(recs){return {action:"sendInvitations",event:{name:eventName.value,date:eventDate.value,time:eventTime.value,venue:venue.value,message:message.value,rsvp:rsvp.value},recipientIds:recs.map(x=>x.id)}}
 async function send(recs){

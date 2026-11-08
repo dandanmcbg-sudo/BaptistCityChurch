@@ -138,12 +138,13 @@ function send_(data){
     props.setProperty('BCC_RESULT_'+requestId,JSON.stringify({status:'processing',kind:'send',at:new Date().toISOString()}));
   }finally{lock.releaseLock()}
   let sent=0,failed=0;
+  const recipientResults=[];
   chosen.forEach(p=>{
-    try{MailApp.sendEmail({to:p.email,subject:'You’re Invited — '+event.name,body:'You are invited to '+event.name+' at Baptist City Church.',htmlBody:email_(p,event),name:'Baptist City Church'});sent++}
-    catch(err){failed++;console.error('Mail delivery failed: '+err.message)}
+    try{MailApp.sendEmail({to:p.email,subject:'You’re Invited — '+event.name,body:'You are invited to '+event.name+' at Baptist City Church.',htmlBody:email_(p,event),name:'Baptist City Church'});sent++;recipientResults.push({name:p.name,email:p.email,status:'accepted by MailApp'})}
+    catch(err){failed++;recipientResults.push({name:p.name,email:p.email,status:'failed',error:String(err.message||'MailApp error').slice(0,120)});console.error('Mail delivery failed: '+err.message)}
   });
   PropertiesService.getScriptProperties().setProperty('BCC_SENT_'+requestId,JSON.stringify({status:'finished',sent,failed,at:new Date().toISOString()}));
-  PropertiesService.getScriptProperties().setProperty('BCC_RESULT_'+requestId,JSON.stringify({status:failed?'partial':'accepted',kind:'send',sent,failed,at:new Date().toISOString()}));
+  PropertiesService.getScriptProperties().setProperty('BCC_RESULT_'+requestId,JSON.stringify({status:failed?'partial':'accepted',kind:'send',sent,failed,recipients:recipientResults,at:new Date().toISOString()}));
   console.log('BCC invitation batch result: accepted=' + sent + ', failed=' + failed);
   return {ok:failed===0,sent,failed,message:'Accepted by MailApp: '+sent+'; failed: '+failed};
 }
