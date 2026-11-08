@@ -1,9 +1,9 @@
 {
-  "version": "v30",
-  "title": "Baptist City Church \u2014 Latest Update",
+  "version": "v31",
+  "title": "Baptist City Church \u2014 Website Updated",
   "changes": [
-    "Check-in now waits for a confirmed Firebase transaction and shows actual save failures instead of false success.",
-    "Duplicate attendance for the same date is blocked.",
-    "Original website features and project files preserved."
+    "Improved admin session restoration after refresh; saved Firebase login is checked before showing the sign-in form.",
+    "Update notification and What\u2019s New appear after new deployments.",
+    "Existing attendance, registration, invitation and church features retained."
   ]
 }

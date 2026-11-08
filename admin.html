@@ -312,7 +312,14 @@ if (!configured) {
   if (auth) {
   window.BCCAdminSignOut = () => signOut(auth);
   document.getElementById("adminSignOutBtn").addEventListener("click", () => signOut(auth));
-  showGate("Checking administrator session…");
+  // Do not display a password form during Firebase session restoration.
+  // Firebase's first auth-state callback decides whether a login is required.
+  const sessionGate = document.createElement("div");
+  sessionGate.id = "adminGate";
+  sessionGate.setAttribute("role", "status");
+  sessionGate.setAttribute("aria-live", "polite");
+  sessionGate.innerHTML = '<div class="auth-card" style="text-align:center"><img src="assets/bcc-logo.png" alt="BCC logo"><h2>Baptist City Church</h2><p>Restoring your admin session…</p></div>';
+  document.body.appendChild(sessionGate);
   onAuthStateChanged(auth, async user => {
     if (user && user.uid === ADMIN_UID) {
       const gate=document.getElementById("adminGate");
@@ -335,20 +342,23 @@ if (!configured) {
       // Hide confidential records as soon as the session ends.
       db=[]; render();
       if(user) {
+        if(document.getElementById("adminGate") && !document.getElementById("adminLoginForm")) document.getElementById("adminGate").remove();
         showGate("This account is not authorized as an administrator. Verify the UID in Firebase Authentication.");
         await signOut(auth);
       } else {
         const gate=document.getElementById("adminGate");
-        if(!gate || gate.style.display==="none") showGate("Admin sign in required.");
+        if(gate && !document.getElementById("adminLoginForm")) gate.remove();
+        showGate("Admin sign in required.");
       }
     }
   }, error => {
     console.error("Firebase authentication observer:", error);
+    if(document.getElementById("adminGate") && !document.getElementById("adminLoginForm")) document.getElementById("adminGate").remove();
     showGate("Could not verify login: " + (error.code || error.message || "Unknown error"));
   });
   }
 }
 </script>
 
-<script defer src="./update.js?v29"></script>
+<script defer src="./update.js?v31"></script>
 </body></html>
