@@ -308,7 +308,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
       <h3>Sunday Check-in</h3>
       <p class="bcc-help">For existing attendees. Search and select a saved attendee to record today's attendance. No need to re-enter their personal information.</p>
       <form id="quickCheckinForm" class="bcc-fields">
-        <div class="form-group"><label for="checkinPerson">Find attendee</label><input id="checkinPerson" list="checkinNames" placeholder="Start typing attendee name..." required autocomplete="off"><datalist id="checkinNames"></datalist></div>
+        <div class="form-group"><label for="checkinPerson">Find attendee</label><input id="checkinPerson" placeholder="Type at least 3 letters to search..." required autocomplete="off" aria-controls="checkinMatches" aria-expanded="false"><input type="hidden" id="checkinSelectedId"><div id="checkinMatches" role="listbox" style="display:none;max-height:220px;overflow:auto;border:1px solid #d1d5db;border-radius:10px;margin-top:6px"></div></div>
         <div class="form-group"><label for="checkinDate">Attendance date</label><input id="checkinDate" type="date" required></div>
         <button type="submit">Mark Present</button>
       </form>
@@ -316,7 +316,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
     </div>
     <div class="card" id="createPanel" hidden>
       <h3>Create Attendee Record</h3>
-      <p class="bcc-help">Use this form only when adding a new member, visitor, or guest. The attendance check-in is handled separately.</p>
+      <p class="bcc-help">Use this form only when adding a new member, visitor, or guest. Your registration automatically counts as your first attendance.</p>
       <form id="attendanceForm" class="bcc-fields">
         <div class="form-group"><label for="fullName">Full Name *</label><input type="text" id="fullName" required placeholder="Type attendee name..."></div>
         <div class="form-group"><label for="category">Category</label><select id="category"><option>Member</option><option>Visitor</option><option>Guest</option></select></div>
@@ -478,35 +478,46 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
       document.getElementById('createTab').classList.toggle('active', view === 'create');
       if(view === 'checkin') refreshBCCNames();
     }
-    function refreshBCCNames() {
-      const list = document.getElementById('checkinNames');
-      if (!list) return;
-      list.replaceChildren();
-      db.forEach(person => {
-        const opt = document.createElement('option');
-        opt.value = person.name;
-        list.appendChild(opt);
-      });
+    let publicNames = [];
+    function availableNames() {
+      const all = [...db.map(p=>({id:p.id,name:p.name,category:p.category})),...publicNames];
+      return [...new Map(all.filter(p=>p.id&&p.name).map(p=>[p.id,p])).values()];
     }
+    function refreshBCCNames() { filterBCCNames(); }
+    function filterBCCNames() {
+      const input=document.getElementById('checkinPerson'), list=document.getElementById('checkinMatches');
+      const q=input.value.trim().toLocaleLowerCase();
+      list.replaceChildren();
+      if(q.length<3){list.style.display='none';input.setAttribute('aria-expanded','false');return;}
+      const matches=availableNames().filter(p=>p.name.toLocaleLowerCase().includes(q)).slice(0,20);
+      matches.forEach(p=>{
+        const btn=document.createElement('button'); btn.type='button';btn.setAttribute('role','option');
+        btn.textContent=`${p.name} (${p.category||'Attendee'})`;
+        btn.style.cssText='display:block;width:100%;text-align:left;background:transparent;color:inherit;border:0;padding:11px;cursor:pointer';
+        btn.addEventListener('click',()=>{input.value=p.name;document.getElementById('checkinSelectedId').value=p.id;list.style.display='none';input.setAttribute('aria-expanded','false');document.getElementById('checkinFeedback').textContent=`Selected: ${p.name}`;});
+        list.appendChild(btn);
+      });
+      if(!matches.length){const empty=document.createElement('div');empty.textContent='No matching registered attendees';empty.style.padding='12px';list.appendChild(empty);}
+      list.style.display='block';input.setAttribute('aria-expanded','true');
+    }
+    document.getElementById('checkinPerson').addEventListener('input',()=>{document.getElementById('checkinSelectedId').value='';filterBCCNames();});
+    window.addEventListener('bcc-directory',e=>{publicNames=e.detail||[];filterBCCNames();});
     document.getElementById('checkinDate').value = bccTodayLocal();
-    document.getElementById('quickCheckinForm').addEventListener('submit', function(e) {
+    document.getElementById('quickCheckinForm').addEventListener('submit', async function(e) {
       e.preventDefault();
-      const name = document.getElementById('checkinPerson').value.trim();
-      const date = document.getElementById('checkinDate').value;
-      const feedback = document.getElementById('checkinFeedback');
-      const matches = db.filter(p => p.name.toLowerCase() === name.toLowerCase());
-      if(matches.length !== 1) {
-        feedback.textContent = matches.length ? 'Multiple records match this name. Please ask the admin to resolve duplicates.' : 'Attendee not found. Create an attendee record first.';
-        return;
-      }
-      const person = matches[0];
-      person.totalAttendance = (Number(person.totalAttendance) || 0) + 1;
-      person.lastAttended = date;
-      saveDB();
-      refreshBCCNames();
-      feedback.textContent = `${person.name} marked present for ${date}.`;
-      this.reset();
-      document.getElementById('checkinDate').value = bccTodayLocal();
+      const id=document.getElementById('checkinSelectedId').value;
+      const date=document.getElementById('checkinDate').value;
+      const feedback=document.getElementById('checkinFeedback');
+      const person=availableNames().find(p=>p.id===id);
+      if(!person){feedback.textContent='Type at least 3 letters and select an attendee from the dropdown.';return;}
+      if(date!==bccTodayLocal()){feedback.textContent='Public check-in is available for today only. Ask an admin to correct past attendance.';return;}
+      const btn=this.querySelector('[type=submit]');btn.disabled=true;feedback.textContent='Saving attendance…';
+      try {
+        await window.BCCStore.checkin(id,date);
+        feedback.textContent=`${person.name} checked in successfully for ${date}.`;
+        this.reset();document.getElementById('checkinSelectedId').value='';document.getElementById('checkinDate').value=bccTodayLocal();
+      }catch(err){console.error(err);feedback.textContent=err.code==='already-checked-in'?'Already checked in today. No duplicate attendance added.':'Unable to save check-in. Please retry or ask an admin.';}
+      finally{btn.disabled=false;}
     });
     document.getElementById('attendanceForm').addEventListener('submit', async function(e) {
       e.preventDefault();
@@ -538,7 +549,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         birthday:document.getElementById('birthday').value,
         prayerRequest:document.getElementById('prayerRequest').value.trim(),
         reminderConsent,reminderEnabled:reminderConsent,
-        totalAttendance:1,lastAttended:bccTodayLocal(),notes:''
+        totalAttendance:1,lastAttended:bccTodayLocal(),createdAt:new Date().toISOString(),notes:''
       };
       if (!window.BCCStore?.upsert) {
         feedback.textContent = 'Database is still connecting. Please wait and try again.';
@@ -747,10 +758,11 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
 
 
 <script type="module">
-import {startBCCData,getBCCRecords,upsertBCCRecord,removeBCCRecord} from "./firebase-data.js";
+import {startBCCData,getBCCRecords,upsertBCCRecord,removeBCCRecord,checkinBCCRecord,startBCCDirectory} from "./firebase-data.js";
 window.BCCStore = {
   remove: removeBCCRecord,
   upsert: upsertBCCRecord,
+  checkin: checkinBCCRecord,
   syncAll(records){ records.forEach(r=>upsertBCCRecord(r)); }
 };
 function refreshStatus(source){
@@ -765,6 +777,7 @@ window.addEventListener("bcc-data",e=>{
 });
 window.addEventListener("bcc-network",()=>refreshStatus("cache"));
 await startBCCData();
+startBCCDirectory().catch(console.error);
 refreshStatus("cache");
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(console.error);
 </script>

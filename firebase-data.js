@@ -2,7 +2,7 @@
 import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 import {
   initializeFirestore, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, setDoc, deleteDoc, onSnapshot, getDocs,
+  collection, doc, setDoc, deleteDoc, onSnapshot, getDocs, increment, updateDoc,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
 
@@ -61,6 +61,15 @@ export async function startBCCData(){
     source = snap.metadata.fromCache ? "cache" : "cloud";
     localWrite(latest); // compatibility backup for existing UI + emergency fallback
     emit();
+    // Admin-maintained, privacy-safe public search index: only name and category.
+    if(document.body.classList.contains("admin-authorized") && !snap.metadata.fromCache){
+      snap.docChanges().forEach(change=>{
+        const id=change.doc.id;
+        const ref=doc(db,"publicAttendees",id);
+        if(change.type==="removed") deleteDoc(ref).catch(console.error);
+        else {const p=change.doc.data();setDoc(ref,{name:p.name||"",category:p.category||"Guest"}).catch(console.error);}
+      });
+    }
   }, err => {
     console.error("Firestore listener:", err);
     window.dispatchEvent(new CustomEvent("bcc-firestore-error", {detail:{code:err.code||"unknown",message:err.message||""}}));
@@ -78,6 +87,9 @@ export async function upsertBCCRecord(record){
   if (!db) throw new Error("Firebase connection is not ready. Refresh and sign in again.");
   // Wait for the server acknowledgement before reporting a successful save.
   await setDoc(doc(db,"members",record.id), {...record, updatedAt:serverTimestamp()}, {merge:true});
+  // Public registration can publish its own minimal directory entry; no private data.
+  try { await setDoc(doc(db,'publicAttendees',record.id),{name:record.name,category:record.category}); }
+  catch(e){ console.warn('Directory update pending admin synchronization',e); }
   return record.id;
 }
 
@@ -100,3 +112,19 @@ export function clearBCCRecords(){
 
 window.addEventListener("online", ()=>window.dispatchEvent(new Event("bcc-network")));
 window.addEventListener("offline", ()=>window.dispatchEvent(new Event("bcc-network")));
+
+// Search index exposes names and categories only; never contact details or prayer requests.
+export async function startBCCDirectory(){
+  if(!configured) return;
+  if(!db){const app=getApps().length?getApp():initializeApp(cfg);db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});}
+  onSnapshot(collection(db,'publicAttendees'),snap=>{
+    window.dispatchEvent(new CustomEvent('bcc-directory',{detail:snap.docs.map(d=>({id:d.id,...d.data()}))}));
+  },console.error);
+}
+export async function checkinBCCRecord(id,date){
+  if(!db) throw new Error('Firebase not connected');
+  if(date!==new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'})) throw new Error('invalid-date');
+  try {
+    await updateDoc(doc(db,'members',id),{totalAttendance:increment(1),lastAttended:date});
+  } catch(e) { if(e.code==='permission-denied') e.code='already-checked-in';throw e; }
+}
