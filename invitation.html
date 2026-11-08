@@ -66,6 +66,12 @@ button:focus-visible,nav a:focus-visible{outline:3px solid #b8a9ff;outline-offse
 .bcc-side-footer .bcc-footnote{font-size:11px;color:#a9a2ad;text-align:center}
 .shell > aside .side-bottom{display:none!important}
 @media(max-width:760px){.shell > aside{min-height:auto!important;height:auto!important;position:relative!important}.shell > aside nav{flex-direction:row!important;overflow-x:auto!important;gap:5px!important}.shell > aside nav a{white-space:nowrap!important}.bcc-side-footer{margin-top:10px!important;padding-top:0!important;align-items:flex-end}.bcc-side-footer .nav-signout{width:auto!important;padding:9px 16px!important}.bcc-side-footer .bcc-footnote{display:none}}
+
+/* Scoped invitation confirmation; does not change existing page layout. */
+.bcc-confirm-overlay{position:fixed;inset:0;z-index:99999;background:rgba(18,29,25,.60);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(5px)}
+.bcc-confirm-dialog{width:min(100%,440px);background:#fff;border-radius:18px;padding:26px;box-shadow:0 24px 80px rgba(0,0,0,.22);color:#24352e}
+.bcc-confirm-dialog h2{font-size:1.3rem;margin:0 0 10px}.bcc-confirm-dialog p{line-height:1.6;margin:0 0 18px;color:#526057}
+.bcc-confirm-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}.bcc-confirm-actions button{cursor:pointer;border-radius:9px;padding:11px 18px;border:1px solid #ccd5cf;background:#fff;color:#24352e;font-weight:650}.bcc-confirm-actions .bcc-confirm-yes{background:#244f3b;color:white;border-color:#244f3b}
 </style></head><body>
 <div class="shell"><aside>
 <div class="brand"><img src="assets/bcc-logo.png"><div><b>Baptist City Church</b><span>Admin Invitation Center</span></div></div>
@@ -83,7 +89,7 @@ button:focus-visible,nav a:focus-visible{outline:3px solid #b8a9ff;outline-offse
 <div class="field full"><label>RSVP / Event Link (optional)</label><input id="rsvp" type="url" placeholder="https://..." oninput="preview()"></div>
 </div></section>
 <section class="card"><h2>Recipients</h2>
-<div class="actions" style="margin:0 0 12px"><button class="btn light" onclick="selectGroup('all')">All with Email</button><button class="btn light" onclick="selectGroup('Member')">Members</button><button class="btn light" onclick="selectGroup('Visitor')">Visitors</button><button class="btn light" onclick="selectGroup('Guest')">Guests</button><button class="btn light" onclick="selectGroup('none')">Clear</button></div>
+<div class="actions" style="margin:0 0 12px"><button class="btn light" onclick="selectGroup('all')">All with Email</button><button class="btn light" onclick="selectGroup('Member')">Members</button><button class="btn light" onclick="selectGroup('Visitor')">Visitors</button><button class="btn light" onclick="selectGroup('Guest')">Guests</button><button class="btn light" onclick="selectGroup('none')">Clear</button><button class="btn light" onclick="selectVisible()">Select filtered</button></div>
 <div class="field" style="margin-bottom:10px"><label for="recipientSearch">Search recipients</label><input id="recipientSearch" placeholder="Search name or email…" oninput="renderRecipients()"></div><div id="recipientSummary" class="muted" style="margin-bottom:8px"></div><div id="recipients" class="recipient-list"></div><div id="selectedCount" class="muted" style="margin-top:8px">0 selected</div><p class="muted">Only attendees who opted in to email invitations are eligible. Delivery requests require an authorized admin session.</p>
 <div class="actions"><button class="btn light" id="testBtn" onclick="sendTest()">Send Test Email</button><button class="btn" id="sendBtn" onclick="sendSelected()">Send Invitation to Selected</button></div>
 <div id="status" class="status"></div><div id="deliveryHistory" style="margin-top:12px" aria-live="polite"></div>
@@ -140,19 +146,31 @@ window.addEventListener("bcc-data",e=>{
   }, error => show("Authentication error: " + (error.code || error.message)));
 }
 window.renderRecipients=renderRecipients;
+const selectedRecipientIds=new Set();
+let activeRecipientGroup="all";
 function eligible(p){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(p.email||"").trim()) && p.reminderConsent===true}
-function renderRecipients(){
- const previouslySelected=new Set([...document.querySelectorAll(".pick:checked")].map(c=>c.dataset.id));
+function visibleRecipients(){
  const query=(document.getElementById("recipientSearch")?.value||"").trim().toLowerCase();
- const all=people.filter(x=>String(x.email||"").trim());
- const filtered=all.filter(x=>(String(x.name||"")+" "+String(x.email||"")).toLowerCase().includes(query));
- const allowed=all.filter(eligible).length;
- document.getElementById("recipientSummary").textContent=`${all.length} with email • ${allowed} opted in • ${all.length-allowed} unavailable for invitations`;
- recipients.innerHTML=filtered.length?filtered.map(x=>`<label class="person"><input class="pick" type="checkbox" data-id="${esc(x.id)}" onchange="count()" ${eligible(x)?"":"disabled"}><span><b>${esc(x.name)}</b><small>${esc(x.email)} • ${esc(x.category||"")} ${eligible(x)?"":"• Consent required / invalid email"}</small></span></label>`).join(""):`<div style="padding:18px" class="muted">No matching attendees with email.</div>`;
- document.querySelectorAll(".pick").forEach(c=>{c.checked=!c.disabled&&previouslySelected.has(c.dataset.id)});count();
+ return people.filter(p=>String(p.email||"").trim() && (activeRecipientGroup==="all" || p.category===activeRecipientGroup) && (String(p.name||"")+" "+String(p.email||"")).toLowerCase().includes(query));
 }
-window.count=()=>selectedCount.textContent=document.querySelectorAll(".pick:checked").length+" selected";
-window.selectGroup=g=>{document.querySelectorAll(".pick").forEach(c=>{let p=people.find(x=>x.id===c.dataset.id);c.checked=!c.disabled&&(g==="all"||(g!=="none"&&p?.category===g))});count()}
+function renderRecipients(){
+ const all=people.filter(x=>String(x.email||"").trim());
+ const allowed=all.filter(eligible).length;
+ const filtered=visibleRecipients();
+ const validIds=new Set(people.filter(eligible).map(p=>String(p.id)));
+ for(const id of selectedRecipientIds){if(!validIds.has(id))selectedRecipientIds.delete(id)}
+ document.getElementById("recipientSummary").textContent=`${all.length} with email • ${allowed} opted in • ${filtered.length} matching ${activeRecipientGroup==="all"?"all categories":activeRecipientGroup}`;
+ recipients.innerHTML=filtered.length?filtered.map(x=>`<label class="person"><input class="pick" type="checkbox" data-id="${esc(x.id)}" onchange="toggleRecipient(this)" ${eligible(x)?"":"disabled"} ${eligible(x)&&selectedRecipientIds.has(String(x.id))?"checked":""}><span><b>${esc(x.name)}</b><small>${esc(x.email)} • ${esc(x.category||"")} ${eligible(x)?"":"• Consent required / invalid email"}</small></span></label>`).join(""):`<div style="padding:18px" class="muted">No matching attendees with email.</div>`;
+ count();
+}
+window.toggleRecipient=el=>{const id=String(el.dataset.id);if(el.checked&&!el.disabled)selectedRecipientIds.add(id);else selectedRecipientIds.delete(id);count()};
+window.count=()=>selectedCount.textContent=selectedRecipientIds.size+" selected";
+window.selectGroup=g=>{
+ if(g==="none"){selectedRecipientIds.clear();activeRecipientGroup="all"}
+ else activeRecipientGroup=g;
+ renderRecipients();
+};
+window.selectVisible=()=>{for(const p of visibleRecipients()){if(eligible(p))selectedRecipientIds.add(String(p.id))}renderRecipients()};
 function bccPrettyDate(value){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(value||""))return "Select a date";
   const [y,m,d]=value.split("-").map(Number);
@@ -216,6 +234,18 @@ function recordDelivery(id,result){
  box.innerHTML='<h3 style="margin:8px 0">Latest sending results</h3><p class="muted">Accepted means submitted to MailApp, not inbox delivery confirmation.</p>'+(items.length?items.map(r=>`<div class="person"><span><b>${esc(r.name||"Recipient")}</b><small>${esc(r.email||"")} • ${esc(r.status||"unknown")}${r.error?" • "+esc(r.error):""}</small></span></div>`).join(""):`<div class="muted">${esc(result.sent||0)} accepted; ${esc(result.failed||0)} failed. Individual results require the updated Apps Script deployment.</div>`);
 }
 function payload(recs){return {action:"sendInvitations",event:{name:eventName.value,date:eventDate.value,time:eventTime.value,venue:venue.value,message:message.value,rsvp:rsvp.value},recipientIds:recs.map(x=>x.id)}}
+function confirmBCCInvitation(count){
+ return new Promise(resolve=>{
+  const overlay=document.createElement('div');overlay.className='bcc-confirm-overlay';overlay.setAttribute('role','presentation');
+  const dialog=document.createElement('div');dialog.className='bcc-confirm-dialog';dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','bccConfirmTitle');
+  dialog.innerHTML='<h2 id="bccConfirmTitle">Send invitations?</h2><p>Are you sure you want to send an invitation to <strong>'+count+' selected recipient'+(count===1?'':'s')+'</strong>? Please review the event details and recipient list before sending.</p><div class="bcc-confirm-actions"><button type="button" data-action="cancel">Cancel</button><button type="button" class="bcc-confirm-yes" data-action="send">Yes, send invitations</button></div>';
+  overlay.appendChild(dialog);document.body.appendChild(overlay);
+  const previous=document.activeElement;const cancel=dialog.querySelector('[data-action="cancel"]');const yes=dialog.querySelector('[data-action="send"]');
+  function close(value){document.removeEventListener('keydown',key);overlay.remove();if(previous&&previous.focus)previous.focus();resolve(value)}
+  function key(e){if(e.key==='Escape'){e.preventDefault();close(false)}if(e.key==='Tab'){const target=e.shiftKey?yes:cancel;if((e.shiftKey&&document.activeElement===cancel)||(!e.shiftKey&&document.activeElement===yes)){e.preventDefault();target.focus()}}}
+  cancel.addEventListener('click',()=>close(false));yes.addEventListener('click',()=>close(true));overlay.addEventListener('click',e=>{if(e.target===overlay)close(false)});document.addEventListener('keydown',key);cancel.focus();
+ });
+}
 async function send(recs){
   if(sending)return;
   const url=scriptUrl.value.trim();
@@ -225,7 +255,7 @@ async function send(recs){
   const unique=[...new Map(recs.filter(r=>r.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email)).map(r=>[r.email.trim().toLowerCase(),r])).values()];
   if (!unique.length) return show("No valid recipient email addresses selected.");
   if (unique.length > 100) return show("Send at most 100 recipients per batch.");
-  if(!confirm(`Submit ${unique.length} invitation(s) to the church email service?`))return;
+  if(!(await confirmBCCInvitation(unique.length)))return;
   sending=true;sendBtn.disabled=true;testBtn.disabled=true;show("Submitting invitation batch to Apps Script…");
   try{
     const user=getAuth(getApps()[0]).currentUser;
@@ -244,7 +274,7 @@ async function send(recs){
 }
 window.sendSelected=()=>{
   if(!adminReady)return show("Admin authorization required before sending invitations.");
-  return send([...document.querySelectorAll(".pick:checked")].map(c=>people.find(x=>x.id===c.dataset.id)).filter(Boolean));
+  return send(people.filter(x=>selectedRecipientIds.has(String(x.id)) && eligible(x)));
 };
 window.sendTest=async()=>{
   if(!adminReady)return show("Admin authorization required.");
