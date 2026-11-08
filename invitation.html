@@ -148,7 +148,8 @@ window.addEventListener("bcc-data",e=>{
 window.renderRecipients=renderRecipients;
 const selectedRecipientIds=new Set();
 let activeRecipientGroup="all";
-function eligible(p){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(p.email||"").trim()) && p.reminderConsent===true}
+function validRecipientEmail(p){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(p.email||"").trim())}
+function eligible(p){return validRecipientEmail(p) && p.reminderConsent===true}
 function visibleRecipients(){
  const query=(document.getElementById("recipientSearch")?.value||"").trim().toLowerCase();
  return people.filter(p=>String(p.email||"").trim() && (activeRecipientGroup==="all" || p.category===activeRecipientGroup) && (String(p.name||"")+" "+String(p.email||"")).toLowerCase().includes(query));
@@ -157,10 +158,10 @@ function renderRecipients(){
  const all=people.filter(x=>String(x.email||"").trim());
  const allowed=all.filter(eligible).length;
  const filtered=visibleRecipients();
- const validIds=new Set(people.filter(eligible).map(p=>String(p.id)));
+ const validIds=new Set(people.filter(validRecipientEmail).map(p=>String(p.id)));
  for(const id of selectedRecipientIds){if(!validIds.has(id))selectedRecipientIds.delete(id)}
  document.getElementById("recipientSummary").textContent=`${all.length} with email • ${allowed} opted in • ${filtered.length} matching ${activeRecipientGroup==="all"?"all categories":activeRecipientGroup}`;
- recipients.innerHTML=filtered.length?filtered.map(x=>`<label class="person"><input class="pick" type="checkbox" data-id="${esc(x.id)}" onchange="toggleRecipient(this)" ${eligible(x)?"":"disabled"} ${eligible(x)&&selectedRecipientIds.has(String(x.id))?"checked":""}><span><b>${esc(x.name)}</b><small>${esc(x.email)} • ${esc(x.category||"")} ${eligible(x)?"":"• Consent required / invalid email"}</small></span></label>`).join(""):`<div style="padding:18px" class="muted">No matching attendees with email.</div>`;
+ recipients.innerHTML=filtered.length?filtered.map(x=>`<label class="person"><input class="pick" type="checkbox" data-id="${esc(x.id)}" onchange="toggleRecipient(this)" ${validRecipientEmail(x)?"":"disabled"} ${validRecipientEmail(x)&&selectedRecipientIds.has(String(x.id))?"checked":""}><span><b>${esc(x.name)}</b><small>${esc(x.email)} • ${esc(x.category||"")} ${!validRecipientEmail(x)?"• Invalid email":x.reminderConsent!==true?"• Email consent not recorded":"• Email consent confirmed"}</small></span></label>`).join(""):`<div style="padding:18px" class="muted">No matching attendees with email.</div>`;
  count();
 }
 window.toggleRecipient=el=>{const id=String(el.dataset.id);if(el.checked&&!el.disabled)selectedRecipientIds.add(id);else selectedRecipientIds.delete(id);count()};
@@ -170,7 +171,7 @@ window.selectGroup=g=>{
  else activeRecipientGroup=g;
  renderRecipients();
 };
-window.selectVisible=()=>{for(const p of visibleRecipients()){if(eligible(p))selectedRecipientIds.add(String(p.id))}renderRecipients()};
+window.selectVisible=()=>{for(const p of visibleRecipients()){if(validRecipientEmail(p))selectedRecipientIds.add(String(p.id))}renderRecipients()};
 function bccPrettyDate(value){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(value||""))return "Select a date";
   const [y,m,d]=value.split("-").map(Number);
@@ -274,7 +275,11 @@ async function send(recs){
 }
 window.sendSelected=()=>{
   if(!adminReady)return show("Admin authorization required before sending invitations.");
-  return send(people.filter(x=>selectedRecipientIds.has(String(x.id)) && eligible(x)));
+  const chosen=people.filter(x=>selectedRecipientIds.has(String(x.id)));
+  if(!chosen.length)return show("Select recipients by checking their boxes first.");
+  const withoutConsent=chosen.filter(x=>!eligible(x));
+  if(withoutConsent.length)return show(withoutConsent.length+" selected recipient(s) have no recorded email consent. Please record their permission in attendee management before sending. Your checkbox selections have been kept.");
+  return send(chosen);
 };
 window.sendTest=async()=>{
   if(!adminReady)return show("Admin authorization required.");
