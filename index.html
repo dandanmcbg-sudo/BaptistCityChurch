@@ -489,18 +489,20 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
       document.getElementById('createPanel').hidden = view !== 'create';
       document.getElementById('checkinTab').classList.toggle('active', view === 'checkin');
       document.getElementById('createTab').classList.toggle('active', view === 'create');
-      if(view === 'checkin') refreshBCCNames();
+      if(view === 'checkin') { refreshBCCNames(); document.getElementById('checkinPerson')?.focus(); }
     }
     function refreshBCCNames() {
       const list = document.getElementById('checkinNames');
       if (!list) return;
       list.replaceChildren();
-      db.forEach(person => {
+      [...db].filter(person => person && typeof person.name === 'string' && person.name.trim()).sort((a,b)=>a.name.localeCompare(b.name)).forEach(person => {
         const opt = document.createElement('option');
         opt.value = person.name;
         list.appendChild(opt);
       });
     }
+    document.getElementById('checkinPerson').addEventListener('focus', refreshBCCNames);
+    document.getElementById('checkinPerson').addEventListener('input', refreshBCCNames);
     document.getElementById('checkinDate').value = bccTodayLocal();
     document.getElementById('quickCheckinForm').addEventListener('submit', async function(e) {
       e.preventDefault();
@@ -776,6 +778,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
 
     applyBranding();
     renderTable();
+    refreshBCCNames();
 
 </script>
 
@@ -796,7 +799,7 @@ function refreshStatus(source){
 }
 window.addEventListener("bcc-data",e=>{
   db=e.detail.records || [];
-  renderTable(); refreshStatus(e.detail.source);
+  renderTable(); refreshBCCNames(); refreshStatus(e.detail.source);
 });
 window.addEventListener("bcc-network",()=>refreshStatus("cache"));
 await startBCCData();
