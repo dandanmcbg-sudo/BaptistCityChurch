@@ -1,0 +1,13 @@
+BCC v42 - Pages Functions deployment repair
+
+Observed failure: GET /api/checkin returned HTTP 200 text/html instead of a Function response. This indicates the live site did not route to the API Function. The presence of a local functions folder does not mean it was deployed.
+
+1. Keep all 187 Firestore members. Do NOT import backup, clear localStorage, loosen Firestore rules, or expose Firebase private keys.
+2. Cloudflare Pages > baptistcitychurch > Settings > Variables and Secrets: Production FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY must exist (already configured by user). They take effect on a new deployment.
+3. Extract this ZIP. From its root in PowerShell, run: powershell -ExecutionPolicy Bypass -File .\DEPLOY-BCC.ps1
+4. The script checks token authentication, asks for explicit DEPLOY confirmation, and runs Wrangler Pages deploy from the root (including functions/). It does NOT automatically run without confirmation. Confirm project name baptistcitychurch in Cloudflare before proceeding; change --project-name if different.
+5. Verify: GET https://baptistcitychurch.pages.dev/api/attendees?q=sa should have application/json content type and a results array; HTML means Functions are not deployed. GET /api/checkin should return a non-HTML response (405 is normal for POST-only).
+6. Test check-in for a real attendee on today's Asia/Manila date. Verify exactly one attendance increment and one attendanceCheckins document; duplicate check-in must not increment.
+7. Public search exposes names/categories, and check-in has no identity verification. Add abuse prevention before wide public use.
+
+This ZIP is source-checked but NOT live-deployed or end-to-end verified.
