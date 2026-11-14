@@ -140,7 +140,9 @@ nav a:focus-visible,.nav-signout:focus-visible,.auth-card button:focus-visible{o
 
 <script>
 let db=[], editing=null;
-function save(){localStorage.setItem('church_db',JSON.stringify(db));if(window.BCCStore)window.BCCStore.syncAll(db);render()}
+function save(){ // Never bulk-write stale records: Firestore is the source of truth.
+  render();
+}
 function stats(){people.textContent=db.length;members.textContent=db.filter(x=>x.category==='Member').length;visitors.textContent=db.filter(x=>x.category!=='Member').length;checkins.textContent=db.reduce((a,x)=>a+(Number(x.totalAttendance)||0),0)}
 function render(){
  stats();let q=search.value.toLowerCase().trim(),f=filter.value;
@@ -167,8 +169,8 @@ try{
 }finally{
   if(saveButton){saveButton.disabled=false;saveButton.textContent='Save Changes'}
 }}
-function del(id){let x=db.find(v=>v.id===id);if(x&&confirm(`Delete ${x.name}'s record?`)){db=db.filter(v=>v.id!==id);if(window.BCCStore)window.BCCStore.remove(id);save()}}
-function clearAll(){if(confirm('Clear ALL attendance records?')&&confirm('Final confirmation: this cannot be undone without a backup.')){if(window.BCCStore)window.BCCStore.clear();db=[];save()}}
+function del(id){let x=db.find(v=>v.id===id);if(x&&confirm(`Delete ${x.name}'s record?`)){if(window.BCCStore)window.BCCStore.remove(id);else alert('Firebase is not connected.');}}
+function clearAll(){alert('Bulk delete is disabled for data safety. Export a backup and delete individual records if necessary.');}
 function exportCSV(){if(!db.length)return alert('No records to export.');let csv='Full Name,Category,Contact Number,Total Attendance,Last Attended,Notes\n'+db.map(x=>[x.name,x.category,x.contact||'',x.totalAttendance||0,x.lastAttended||'',x.notes||''].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='BCC_Attendance_Backup_'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(a.href)}
 function importCSV(e){let file=e.target.files[0];if(!file)return;let r=new FileReader();r.onload=()=>{let lines=r.result.split(/\r?\n/).slice(1).filter(Boolean);for(let line of lines){let c=line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g)||[];c=c.map(v=>v.replace(/^"|"$/g,'').replace(/""/g,'"'));if(!c[0])continue;let old=db.find(x=>x.name.toLowerCase()===c[0].toLowerCase());let obj={id:old?.id||('id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),name:c[0],category:c[1]||'Member',contact:c[2]||'',totalAttendance:Number(c[3])||0,lastAttended:c[4]||'',notes:c[5]||''};if(old)Object.assign(old,obj);else db.push(obj)}save();alert('Import complete.');e.target.value=''};r.readAsText(file)}
 render();
@@ -193,18 +195,52 @@ render();
 })();
 </script>
 
+<section id="bccDirectorySync" style="margin:16px 20px;padding:16px;border:1px solid #d6c9b7;border-radius:12px;background:#fffaf3" hidden>
+<strong>Public attendee name directory</strong>
+<p style="margin:8px 0">Sync names and categories only. Do this only for attendees who have consented to appear in the public check-in search. No emails, contacts, or prayer requests are shared.</p>
+<label style="display:block;margin:8px 0"><input id="bccDirectoryConsent" type="checkbox"> I confirm that the selected attendees have consented to a public name directory.</label>
+<button type="button" id="bccSyncDirectory">Sync consenting attendees</button>
+<p id="bccDirectoryStatus" aria-live="polite"></p>
+<div id="bccPendingRequests" style="margin-top:12px"></div>
+</section>
 <script type="module">
 import {startBCCData,upsertBCCRecord,removeBCCRecord,clearBCCRecords} from "./firebase-data.js";
-import {getFirestore,doc,setDoc,collection,getDocs} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
-import {getApp} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
-async function syncPublicDirectory(records){
+import {getFirestore,collection,doc,getDocs,setDoc,deleteDoc,updateDoc,increment,serverTimestamp,onSnapshot} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+import {getApp,getApps,initializeApp} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+const publicDb=getFirestore(getApps().length?getApp():initializeApp(window.BCC_FIREBASE_CONFIG));
+const syncSection=document.getElementById('bccDirectorySync');
+const syncStatus=document.getElementById('bccDirectoryStatus');
+document.getElementById('bccSyncDirectory').addEventListener('click',async()=>{
  if(!document.body.classList.contains('admin-authorized'))return;
- const firestore=getFirestore(getApp());
- for(const r of records){if(!r.id||!r.name)continue;
-  await setDoc(doc(firestore,'publicAttendees',r.id),{name:r.name,category:r.category||'Member'});
- }
+ if(!document.getElementById('bccDirectoryConsent').checked){syncStatus.textContent='Confirm consent before syncing.';return;}
+ const eligible=db.filter(p=>p.id && p.name && p.publicDirectoryConsent === true);
+ if(!eligible.length){syncStatus.textContent='No attendees have publicDirectoryConsent=true. Set consent on each eligible member before syncing.';return;}
+ syncStatus.textContent=`Syncing ${eligible.length} consented names…`;
+ let success=0;
+ for(const p of eligible){try{await setDoc(doc(publicDb,'publicAttendees',p.id),{name:p.name,category:p.category||'Member'});success++;}catch(e){console.error('Directory sync:',e);}}
+ syncStatus.textContent=`Synced ${success}/${eligible.length} consented names. Existing directory entries are not deleted automatically.`;
+});
+let unsubscribePending;
+function startPending(){if(unsubscribePending)return;
+ unsubscribePending=onSnapshot(collection(publicDb,'attendanceCheckins'),snap=>{
+  const pending=snap.docs.filter(d=>d.data().status==='pending');
+  const box=document.getElementById('bccPendingRequests');box.replaceChildren();
+  const header=document.createElement('strong');header.textContent=`Pending check-in requests (${pending.length})`;box.appendChild(header);
+  pending.slice(0,40).forEach(item=>{
+   const d=item.data(),line=document.createElement('div');line.style.margin='8px 0';
+   const name=db.find(p=>p.id===d.memberId)?.name||d.memberId;
+   const text=document.createElement('span');text.textContent=`${name} — ${d.date} `;line.appendChild(text);
+   const approve=document.createElement('button');approve.textContent='Approve';approve.type='button';
+   approve.onclick=async()=>{approve.disabled=true;try{
+    const member=db.find(p=>p.id===d.memberId);if(!member)throw Error('Member not found');
+    if(member.lastAttended===d.date)throw Error('Already marked for this date');
+    await updateDoc(doc(publicDb,'members',d.memberId),{totalAttendance:increment(1),lastAttended:d.date});
+    await updateDoc(doc(publicDb,'attendanceCheckins',item.id),{status:'approved',approvedAt:serverTimestamp()});
+   }catch(e){alert('Approval not completed: '+e.message);}finally{approve.disabled=false;}};
+   line.appendChild(approve);box.appendChild(line);
+  });
+ },e=>{document.getElementById('bccPendingRequests').textContent='Pending check-ins unavailable: '+e.message;});
 }
-window.BCCSyncDirectory=syncPublicDirectory;
 
 window.BCCStore={
  upsert:upsertBCCRecord,
@@ -244,19 +280,9 @@ async function bccBackfillFirstAttendance(records, source){
   if(badge) badge.textContent = failed ? `● ${success} first attendance records saved; ${failed} failed (check Firebase permissions)` : `● ${success} first attendance records saved to Firebase`;
  } finally {bccBackfillRunning = false;}
 }
-window.addEventListener("bcc-data",e=>{db=e.detail.records||[];render();addSyncBadge(e.detail.source);bccBackfillFirstAttendance(db,e.detail.source)});
+window.addEventListener("bcc-data",e=>{db=e.detail.records||[];render();addSyncBadge(e.detail.source);/* automatic historical backfill disabled to protect attendance history */});
 window.addEventListener("bcc-network",()=>addSyncBadge("cache"));
-window.BCCStartAdminData = async () => { await startBCCData(); addSyncBadge("cache"); };
-const directoryButton=document.createElement('button');directoryButton.textContent='Sync public name directory';
-directoryButton.type='button';directoryButton.style.margin='12px';
-directoryButton.addEventListener('click',async()=>{
- if(!document.body.classList.contains('admin-authorized'))return;
- directoryButton.disabled=true;directoryButton.textContent='Syncing directory…';
- try{await syncPublicDirectory(db);directoryButton.textContent='Directory synced successfully';}
- catch(e){directoryButton.textContent='Sync failed: '+e.message;console.error(e)}
- finally{setTimeout(()=>{directoryButton.disabled=false;directoryButton.textContent='Sync public name directory'},3500)}
-});
-document.body.appendChild(directoryButton);
+window.BCCStartAdminData = async () => { await startBCCData(); addSyncBadge("cache"); syncSection.hidden=false; startPending(); };
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(console.error);
 </script>
 
