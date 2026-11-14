@@ -199,7 +199,7 @@
             gap: 12px;
             flex-wrap: wrap;
         }
-    .bcc-suggestions{position:relative;z-index:25;max-height:240px;overflow-y:auto;background:#fff;border:1px solid #d9e2ee;border-radius:12px;box-shadow:0 12px 26px rgba(0,0,0,.12);margin-top:5px}.bcc-suggestions[hidden]{display:none!important}.bcc-suggestion{display:block;width:100%;text-align:left;background:#fff!important;color:#172334!important;border:0!important;border-bottom:1px solid #edf0f4!important;border-radius:0!important;padding:12px 14px!important;cursor:pointer}.bcc-suggestion:hover,.bcc-suggestion:focus{background:#eff6ff!important;outline:2px solid #bfdbfe;outline-offset:-2px}.bcc-suggestion-empty{padding:12px;color:#64748b}
+    .bcc-suggestions{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:1000;max-height:184px;overflow-y:auto;background:#fff;border:1px solid #d9e2ee;border-radius:12px;box-shadow:0 12px 26px rgba(0,0,0,.12);margin-top:5px}.bcc-suggestions[hidden]{display:none!important}.bcc-suggestion{display:block;width:100%;text-align:left;background:#fff!important;color:#172334!important;border:0!important;border-bottom:1px solid #edf0f4!important;border-radius:0!important;padding:12px 14px!important;cursor:pointer}.bcc-suggestion:hover,.bcc-suggestion:focus{background:#eff6ff!important;outline:2px solid #bfdbfe;outline-offset:-2px}.bcc-suggestion-empty{padding:12px;color:#64748b}#quickCheckinForm .form-group:first-child{position:relative;min-width:0}#checkinSuggestions{box-sizing:border-box}#checkinSuggestions .bcc-suggestion{font-size:13px!important;padding:9px 12px!important;min-height:38px!important;line-height:1.35!important}#checkinSuggestions .bcc-suggestion:focus-visible{outline:2px solid #2563eb}
 </style>
 
 <style>
@@ -500,6 +500,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         option.setAttribute('role', 'option');
         option.textContent = person.name + ' · ' + (person.category || 'Attendee');
         option.addEventListener('mousedown', e => e.preventDefault());
+        option.addEventListener('keydown', e => { if(e.key === 'Escape'){list.hidden=true;input.focus();} if(e.key === 'ArrowDown'){e.preventDefault();option.nextElementSibling?.focus();} if(e.key === 'ArrowUp'){e.preventDefault();(option.previousElementSibling || input).focus();} });
         option.addEventListener('click', () => {
           selectedCheckinId = person.id;
           input.value = person.name;
@@ -568,7 +569,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         document.getElementById('checkinDate').value = bccTodayLocal();
       } catch(error) {
         console.error('Check-in failed:',error);
-        feedback.textContent = 'Check-in NOT saved: ' + (error.message || error) + '. Please ask the admin to check Firebase access.';
+        feedback.textContent = (error.code === 'permission-denied' || /permission/i.test(error.message || '')) ? 'Check-in not saved: Firebase access denied. An administrator must enable the secure check-in service; attendee data has not been changed.' : 'Check-in NOT saved: ' + (error.message || error);
       } finally { btn.disabled = false; }
     });
     document.getElementById('attendanceForm').addEventListener('submit', async function(e) {

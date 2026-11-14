@@ -1,0 +1,3 @@
+Name suggestions: compact absolute dropdown, keyboard navigation, no longer pushes date/button down.
+IMPORTANT: Mark Present for non-admin users cannot be fixed securely by allowing anonymous updates to member counters. Current Firebase rules deliberately restrict existing member writes. A trusted backend (Cloudflare Worker/Firebase Function) with identity/rate-limits and duplicate-date validation is needed, along with a server-backed public name-search endpoint that returns only minimal name/id/category data. Do not publish private members collection. This ZIP does not implement that backend or deploy to Cloudflare/Firebase.
+Deploy the TOP-LEVEL BaptistCityChurch-main folder, not the nested historical copy.
