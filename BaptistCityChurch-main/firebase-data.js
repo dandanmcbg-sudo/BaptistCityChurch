@@ -84,12 +84,18 @@ export async function upsertBCCRecord(record){
 }
 
 export async function checkinBCCRecord(id, date){
-  if (!configured || !db) throw new Error('Firebase connection is unavailable.');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Invalid attendance date.');
-  await updateDoc(doc(db, 'members', id), {
-    totalAttendance: increment(1),
-    lastAttended: date
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)) throw new Error('Invalid attendance date.');
+  // Public check-in is handled server-side. No public permission to edit private members.
+  const response = await fetch('/api/checkin', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    credentials: 'same-origin',
+    body: JSON.stringify({memberId: String(id), date})
   });
+  let result;
+  try { result = await response.json(); } catch { throw new Error('Check-in API is not available. Deploy Cloudflare Pages Functions and configure server credentials.'); }
+  if (!response.ok || !result.ok) throw new Error(result.error || 'Check-in could not be saved.');
+  return result;
 }
 
 export function removeBCCRecord(id){
