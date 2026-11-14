@@ -275,6 +275,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
 
 <link rel="manifest" href="manifest.webmanifest">
 <script src="firebase-config.js"></script>
+<script type="module" src="bcc-public.js"></script>
 <style>
 .bcc-tabs{display:flex;gap:10px;margin:20px 0 12px;flex-wrap:wrap}
 .bcc-tab{background:#e9e2d8;color:#28231e;border:1px solid #ded2c3;padding:12px 18px;border-radius:12px}
@@ -496,9 +497,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
       if (!query || document.activeElement !== input) { list.hidden = true; input.setAttribute('aria-expanded','false'); return; }
       searchTimer = setTimeout(async () => {
         try {
-          const response = await fetch('/api/attendees?q='+encodeURIComponent(query), {cache:'no-store'});
-          if(!response.ok) throw new Error('Search service unavailable');
-          const data = await response.json();
+          const data = await window.BCCPublic.search(query);
           if(seq !== searchSequence) return;
           publicMatches = data.results || [];
           list.replaceChildren();
@@ -542,11 +541,9 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
       btn.disabled = true;
       feedback.textContent = 'Saving check-in to Firebase…';
       try {
-        const response = await fetch('/api/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({memberId:person.id,date})});
-        const result = await response.json();
-        if(!response.ok) throw new Error(result.error || 'Unable to save check-in');
-        feedback.textContent = `${person.name} checked in successfully for ${date}. Attendance saved.`;
-        window.showBCCSuccess('Attendance Recorded Successfully!', `${person.name} is marked present for ${date}. Attendance saved to Firebase.`);
+        await window.BCCPublic.checkin(person.id,date);
+        feedback.textContent = `${person.name}: check-in request saved for ${date}. Awaiting admin verification.`;
+        window.showBCCSuccess('Check-in Request Saved!', `${person.name}'s request for ${date} is awaiting admin verification.`);
         window.refreshLiveAttendance?.();
         selectedCheckinId=null;publicMatches=[];
         this.reset();
@@ -591,9 +588,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
       if (submitButton) submitButton.disabled = true;
       feedback.textContent = 'Saving registration and first attendance…';
       try {
-        const response = await fetch('/api/register', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(person)});
-        const saved = await response.json().catch(()=>({}));
-        if(!response.ok) throw new Error(saved.error || `Registration unavailable (${response.status})`);
+        await window.BCCPublic.register(person);
         window.refreshLiveAttendance?.();
         if(reminderConsent && email && typeof syncAttendeeToReminderBackend === 'function') {
           Promise.resolve(syncAttendeeToReminderBackend(person)).catch(console.error);
@@ -817,14 +812,12 @@ async function refreshLiveAttendance(){
   const el=document.getElementById('bccLiveCount');
   if(!el || document.hidden || !navigator.onLine) return;
   try {
-    const res=await fetch('/api/live-attendance',{cache:'no-store'});
-    if(!res.ok) throw new Error('Unavailable');
-    const data=await res.json();
+    const data=await window.BCCPublic.todayTotal();
     if(!Number.isInteger(data.total)) throw new Error('Invalid total');
     lastLiveTotal=data.total;
-    el.textContent=`Today's attendance: ${data.total} present · Live sync`;
+    el.textContent='Today’s attendance: verified tally pending admin setup';
   } catch {
-    el.textContent=lastLiveTotal===null?'Today’s attendance: backend unavailable — check Cloudflare deployment':`Today's attendance: ${lastLiveTotal} · Reconnecting…`;
+    el.textContent=lastLiveTotal===null?'Today’s attendance: waiting for Firebase sync':`Today's attendance: ${lastLiveTotal} · Reconnecting…`;
   }
 }
 window.refreshLiveAttendance = refreshLiveAttendance;
