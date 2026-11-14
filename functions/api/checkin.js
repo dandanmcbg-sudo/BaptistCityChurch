@@ -6,9 +6,7 @@ export async function onRequestPost({request,env}){
   const {memberId,date}=body||{};
   if(typeof memberId!=='string'|| !/^[a-zA-Z0-9_-]{1,120}$/.test(memberId))return reply({error:'Invalid attendee'},400);
   // Public check-in is restricted to today's date in Manila to prevent arbitrary historical edits.
-  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
-  const part=(type)=>parts.find(p=>p.type===type)?.value;
-  const today=`${part('year')}-${part('month')}-${part('day')}`;
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   if(date!==today)return reply({error:'Public check-in is available for today only'},400);
   try{
     const memberUrl=base+'/members/'+encodeURIComponent(memberId);

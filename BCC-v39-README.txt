@@ -1,0 +1,1 @@
+Restored original baseline with Firebase module syntax fix, preservation of nonempty church_db, migration retry protection, and successful-save popups. IMPORTANT: Public check-in still requires matching Firebase permissions and a secure directory mechanism. Never publish permissive member read rules. Test on preview; do not delete localStorage.

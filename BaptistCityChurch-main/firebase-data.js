@@ -1,9 +1,9 @@
 
 import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 import {
-  getFirestore,
+  initializeFirestore, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, setDoc, deleteDoc, onSnapshot, getDocs,
-  serverTimestamp
+  serverTimestamp, runTransaction, updateDoc, increment
 } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
 
 const cfg = window.BCC_FIREBASE_CONFIG || {};
@@ -22,16 +22,7 @@ function localRead(){
   try { return JSON.parse(localStorage.getItem("church_db") || "[]"); } catch { return []; }
 }
 function localWrite(records){
-  // Never destroy the last known populated backup with an empty or failed read.
-  if (!Array.isArray(records) || records.length === 0) return;
-  const previous = localRead();
-  try {
-    if (previous.length > 0) {
-      const key = "bcc_backup_" + new Date().toISOString().slice(0,10);
-      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(previous));
-    }
-    localStorage.setItem("church_db", JSON.stringify(records));
-  } catch (error) { console.warn("BCC local backup unavailable:", error); }
+  localStorage.setItem("church_db", JSON.stringify(records));
 }
 export function isFirebaseConfigured(){ return configured; }
 
@@ -53,35 +44,24 @@ export async function startBCCData(){
       : persistentLocalCache({tabManager: persistentMultipleTabManager()})
   });
 
-  // Public check-in cannot list private member records under secure Firestore rules.
-  // Keep local UI available; admin pages load the protected collection after auth.
-  if (!document.body.classList.contains("admin-authorized") && !invitationPage) {
-    latest=localRead();source="local";emit();return {mode:"local"};
-  }
   // One-time migration of existing localStorage records into Firestore.
   const migrationKey = "bcc_firebase_migration_v1";
   if (document.body.classList.contains("admin-authorized") && !localStorage.getItem(migrationKey)) {
     const old = localRead();
-    old.forEach(r => {
-      if (!r.id) r.id = "id_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
-      setDoc(doc(db,"members",r.id), {...r, updatedAt:serverTimestamp()}, {merge:true})
-        .catch(console.error);
-    });
-    localStorage.setItem(migrationKey, "queued");
+    if (old.length) {
+      Promise.all(old.map(r => {
+        if (!r.id) r.id = "id_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
+        return setDoc(doc(db,"members",r.id), {...r, updatedAt:serverTimestamp()}, {merge:true});
+      })).then(() => localStorage.setItem(migrationKey, "completed"))
+        .catch(err => console.error("BCC migration failed; local backup preserved",err));
+    } else localStorage.setItem(migrationKey, "no-local-records");
   }
 
   unsubscribe = onSnapshot(collection(db,"members"), {includeMetadataChanges:true}, snap => {
     const cloudRecords = snap.docs.map(d => ({id:d.id, ...d.data()}));
-    // An empty snapshot must not silently erase or replace a populated local backup.
-    if (cloudRecords.length === 0 && localRead().length > 0) {
-      latest = localRead(); source = "recovery-local";
-      window.dispatchEvent(new CustomEvent("bcc-firestore-error", {detail:{code:"empty-cloud",message:"No member records were returned. Displaying preserved local backup; cloud records need verification."}}));
-      emit();
-      return;
-    }
-    latest = cloudRecords;
+    latest = cloudRecords.length ? cloudRecords : localRead();
     source = snap.metadata.fromCache ? "cache" : "cloud";
-    localWrite(latest); // compatibility backup for existing UI + emergency fallback
+    if (latest.length) localWrite(latest); // never overwrite a populated recovery backup with an empty snapshot
     emit();
   }, err => {
     console.error("Firestore listener:", err);
@@ -94,20 +74,22 @@ export async function startBCCData(){
 
 export function getBCCRecords(){ return latest.length ? latest : localRead(); }
 
-export function upsertBCCRecord(record){
+export async function upsertBCCRecord(record){
   if (!record.id) record.id = "id_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
-  // Immediate local mirror keeps UI responsive even before server ack.
-  const arr = getBCCRecords().slice();
-  const i = arr.findIndex(x => x.id === record.id);
-  if (i >= 0) arr[i] = {...arr[i], ...record}; else arr.push(record);
-  latest = arr; localWrite(arr); emit();
-
-  if (db) {
-    // Intentionally not awaited: offline writes are queued in Firestore persistent cache.
-    setDoc(doc(db,"members",record.id), {...record, updatedAt:serverTimestamp()}, {merge:true})
-      .catch(console.error);
-  }
+  if (!configured) throw new Error("Firebase is not configured.");
+  if (!db) throw new Error("Firebase connection is not ready. Refresh and sign in again.");
+  // Wait for the server acknowledgement before reporting a successful save.
+  await setDoc(doc(db,"members",record.id), {...record, updatedAt:serverTimestamp()}, {merge:true});
   return record.id;
+}
+
+export async function checkinBCCRecord(id, date){
+  if (!configured || !db) throw new Error('Firebase connection is unavailable.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Invalid attendance date.');
+  await updateDoc(doc(db, 'members', id), {
+    totalAttendance: increment(1),
+    lastAttended: date
+  });
 }
 
 export function removeBCCRecord(id){

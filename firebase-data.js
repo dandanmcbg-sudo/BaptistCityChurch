@@ -1,7 +1,7 @@
 
 import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 import {
-  getFirestore,
+  initializeFirestore, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, setDoc, deleteDoc, onSnapshot, getDocs,
   serverTimestamp, runTransaction, updateDoc, increment
 } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
@@ -22,16 +22,7 @@ function localRead(){
   try { return JSON.parse(localStorage.getItem("church_db") || "[]"); } catch { return []; }
 }
 function localWrite(records){
-  // Never destroy the last known populated backup with an empty or failed read.
-  if (!Array.isArray(records) || records.length === 0) return;
-  const previous = localRead();
-  try {
-    if (previous.length > 0) {
-      const key = "bcc_backup_" + new Date().toISOString().slice(0,10);
-      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(previous));
-    }
-    localStorage.setItem("church_db", JSON.stringify(records));
-  } catch (error) { console.warn("BCC local backup unavailable:", error); }
+  localStorage.setItem("church_db", JSON.stringify(records));
 }
 export function isFirebaseConfigured(){ return configured; }
 
@@ -43,25 +34,34 @@ export async function startBCCData(){
   }
 
   const app = getApps().length ? getApp() : initializeApp(cfg);
-  // Reuse the Firestore instance initialized by the other page modules.
-  // Calling initializeFirestore() after getFirestore() causes failed-precondition
-  // and prevents the admin's existing member records from loading.
-  db = getFirestore(app);
+  // The Invitation Center only reads recipients. Using memory cache here avoids
+  // IndexedDB primary-lease contention with other open attendance/admin tabs.
+  // Keep persistent offline caching unchanged on the main and admin pages.
+  const invitationPage = /(?:^|\/)invitation\.html$/.test(location.pathname);
+  db = initializeFirestore(app, {
+    localCache: invitationPage
+      ? memoryLocalCache()
+      : persistentLocalCache({tabManager: persistentMultipleTabManager()})
+  });
 
-  // Automatic local-to-cloud migration disabled: requires explicit admin review to avoid overwriting live records.
+  // One-time migration of existing localStorage records into Firestore.
+  const migrationKey = "bcc_firebase_migration_v1";
+  if (document.body.classList.contains("admin-authorized") && !localStorage.getItem(migrationKey)) {
+    const old = localRead();
+    if (old.length) {
+      Promise.all(old.map(r => {
+        if (!r.id) r.id = "id_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
+        return setDoc(doc(db,"members",r.id), {...r, updatedAt:serverTimestamp()}, {merge:true});
+      })).then(() => localStorage.setItem(migrationKey, "completed"))
+        .catch(err => console.error("BCC migration failed; local backup preserved",err));
+    } else localStorage.setItem(migrationKey, "no-local-records");
+  }
 
   unsubscribe = onSnapshot(collection(db,"members"), {includeMetadataChanges:true}, snap => {
     const cloudRecords = snap.docs.map(d => ({id:d.id, ...d.data()}));
-    // An empty snapshot must not silently erase or replace a populated local backup.
-    if (cloudRecords.length === 0 && localRead().length > 0) {
-      latest = localRead(); source = "recovery-local";
-      window.dispatchEvent(new CustomEvent("bcc-firestore-error", {detail:{code:"empty-cloud",message:"No member records were returned. Displaying preserved local backup; cloud records need verification."}}));
-      emit();
-      return;
-    }
-    latest = cloudRecords;
+    latest = cloudRecords.length ? cloudRecords : localRead();
     source = snap.metadata.fromCache ? "cache" : "cloud";
-    localWrite(latest); // compatibility backup for existing UI + emergency fallback
+    if (latest.length) localWrite(latest); // never overwrite a populated recovery backup with an empty snapshot
     emit();
   }, err => {
     console.error("Firestore listener:", err);

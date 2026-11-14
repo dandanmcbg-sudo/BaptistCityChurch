@@ -1,51 +1,60 @@
 rules_version = '2';
 service cloud.firestore {
- match /databases/{database}/documents {
-  function isAdmin(){return request.auth != null && request.auth.uid == 'tSirLJ49mPTM2wo7kpmAxbqT7Rj2';}
-  function signedIn(){return request.auth != null;}
-  function validRegistration(id){
-   let d=request.resource.data;
-   return signedIn() && request.auth.token.firebase.sign_in_provider == 'anonymous'
-    && d.keys().hasOnly(['id','name','category','email','contact','ministry','firstTimeVisitor','invitedBy','contactMethod','birthday','prayerRequest','reminderConsent','reminderEnabled','totalAttendance','lastAttended','notes','updatedAt','publicDirectoryConsent'])
-    && d.keys().hasAll(['id','name','category','totalAttendance','lastAttended','updatedAt'])
-    && d.id == id && d.name is string && d.name.size()>0 && d.name.size()<=150
-    && d.category in ['Member','Visitor','Guest']
-    && d.totalAttendance == 1 && d.lastAttended is string
-    && d.lastAttended.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
-    && d.updatedAt == request.time
-    && d.email is string && d.email.size()<=254
-    && d.contact is string && d.contact.size()<=40
-    && d.prayerRequest is string && d.prayerRequest.size()<=2000
-    && d.reminderConsent is bool && d.reminderEnabled is bool;
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.uid == 'tSirLJ49mPTM2wo7kpmAxbqT7Rj2';
+    }
+
+    function validPublicRegistration(memberId) {
+      let d = request.resource.data;
+      return request.auth == null
+        && d.keys().hasOnly([
+          'id', 'name', 'category', 'email', 'contact', 'ministry',
+          'firstTimeVisitor', 'invitedBy', 'contactMethod', 'birthday',
+          'prayerRequest', 'reminderConsent', 'reminderEnabled',
+          'totalAttendance', 'lastAttended', 'notes', 'updatedAt'
+        ])
+        && d.keys().hasAll(['name', 'category', 'totalAttendance'])
+        && d.name is string
+        && d.name.size() > 0 && d.name.size() <= 150
+        && d.category in ['Member', 'Visitor', 'Guest']
+        && d.totalAttendance is int
+        && d.totalAttendance == 1
+        && d.lastAttended is string
+        && d.lastAttended.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")
+        && (!('email' in d) || (d.email is string && d.email.size() <= 254))
+        && (!('contact' in d) || (d.contact is string && d.contact.size() <= 40))
+        && (!('prayerRequest' in d) || (d.prayerRequest is string && d.prayerRequest.size() <= 2000))
+        && (!('reminderConsent' in d) || d.reminderConsent is bool)
+        && (!('reminderEnabled' in d) || d.reminderEnabled is bool)
+        && (!('id' in d) || d.id == memberId);
+    }
+
+    // Public check-in may change only attendance counters, never private fields.
+    // A same-date duplicate is rejected by the server.
+    function validPublicCheckin() {
+      return request.auth == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalAttendance', 'lastAttended'])
+        && resource.data.totalAttendance is int
+        && request.resource.data.totalAttendance == resource.data.totalAttendance + 1
+        && request.resource.data.lastAttended is string
+        && request.resource.data.lastAttended.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && request.resource.data.lastAttended != resource.data.lastAttended;
+    }
+
+    match /members/{memberId} {
+      allow read, delete: if isAdmin();
+      allow update: if isAdmin() || validPublicCheckin();
+      allow create: if isAdmin() || validPublicRegistration(memberId);
+    }
+
+    match /churchEvents/{eventId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
-  match /members/{id}{
-   allow read,update,delete: if isAdmin();
-   allow create: if isAdmin() || validRegistration(id);
-  }
-  match /publicAttendees/{id}{
-   allow read: if signedIn();
-   allow create,update,delete: if isAdmin() && request.resource.data.keys().hasOnly(['name','category']);
-  }
-  match /attendanceCheckins/{id}{
-   allow create: if signedIn()
-    && request.auth.token.firebase.sign_in_provider == 'anonymous'
-    && request.resource.data.keys().hasOnly(['memberId','date','requestedBy','createdAt','status'])
-    && request.resource.data.keys().hasAll(['memberId','date','requestedBy','createdAt','status'])
-    && request.resource.data.memberId is string
-    && request.resource.data.memberId.size()>0
-    && request.resource.data.memberId.size()<=150
-    && request.resource.data.date is string
-    && request.resource.data.date.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
-    && id == request.resource.data.memberId + '_' + request.resource.data.date
-    && exists(/databases/$(database)/documents/publicAttendees/$(request.resource.data.memberId))
-    && request.resource.data.requestedBy == request.auth.uid
-    && request.resource.data.createdAt == request.time
-    && request.resource.data.status == 'confirmed';
-   allow read: if signedIn();
-   allow update,delete: if isAdmin();
-  }
-  match /publicStats/{id}{allow read: if signedIn();allow write: if isAdmin();}
-  match /churchEvents/{id}{allow read,write: if isAdmin();}
-  match /{document=**}{allow read,write: if false;}
- }
 }

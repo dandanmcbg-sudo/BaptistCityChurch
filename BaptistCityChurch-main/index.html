@@ -467,6 +467,19 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         });
     }
 
+    function bccSuccessPopup(title, message) {
+      let overlay = document.getElementById('bccSuccessOverlay');
+      if (!overlay) {
+        overlay = document.createElement('div'); overlay.id='bccSuccessOverlay';
+        overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:18px';
+        overlay.innerHTML='<div role="dialog" aria-modal="true" style="max-width:420px;width:100%;background:white;color:#1c2432;border-radius:20px;padding:30px;text-align:center;box-shadow:0 20px 60px #0003"><div style="font-size:50px;color:#16a34a">✓</div><h2 id="bccSuccessTitle"></h2><p id="bccSuccessMessage"></p><button id="bccSuccessClose" type="button" style="padding:12px 30px;border:0;border-radius:12px;background:#245b48;color:white;cursor:pointer">Done</button></div>';
+        document.body.appendChild(overlay);
+        overlay.querySelector('#bccSuccessClose').addEventListener('click',()=>overlay.style.display='none');
+      }
+      overlay.querySelector('#bccSuccessTitle').textContent=title;
+      overlay.querySelector('#bccSuccessMessage').textContent=message;
+      overlay.style.display='flex';
+    }
     function bccTodayLocal() {
       const d = new Date();
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -489,7 +502,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
       });
     }
     document.getElementById('checkinDate').value = bccTodayLocal();
-    document.getElementById('quickCheckinForm').addEventListener('submit', function(e) {
+    document.getElementById('quickCheckinForm').addEventListener('submit', async function(e) {
       e.preventDefault();
       const name = document.getElementById('checkinPerson').value.trim();
       const date = document.getElementById('checkinDate').value;
@@ -499,16 +512,36 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         feedback.textContent = matches.length ? 'Multiple records match this name. Please ask the admin to resolve duplicates.' : 'Attendee not found. Create an attendee record first.';
         return;
       }
+      if (!date) { feedback.textContent = 'Choose an attendance date.'; return; }
       const person = matches[0];
-      person.totalAttendance = (Number(person.totalAttendance) || 0) + 1;
-      person.lastAttended = date;
-      saveDB();
-      refreshBCCNames();
-      feedback.textContent = `${person.name} marked present for ${date}.`;
-      this.reset();
-      document.getElementById('checkinDate').value = bccTodayLocal();
+      if (person.lastAttended === date) {
+        feedback.textContent = 'Already checked in for this date. No duplicate attendance added.';
+        return;
+      }
+      if (!window.BCCStore?.checkin) {
+        feedback.textContent = 'Firebase is not ready. Please try again.';
+        return;
+      }
+      const btn = this.querySelector('[type=submit]');
+      if(btn.disabled) return;
+      btn.disabled = true;
+      feedback.textContent = 'Saving check-in to Firebase…';
+      try {
+        await window.BCCStore.checkin(person.id, date);
+        person.totalAttendance = (Number(person.totalAttendance) || 0) + 1;
+        person.lastAttended = date;
+        localStorage.setItem('church_db', JSON.stringify(db));
+        renderTable();
+        feedback.textContent = `${person.name} checked in successfully for ${date}. Attendance saved.`;
+        bccSuccessPopup("Attendance Recorded!", `Welcome, ${person.name}! Enjoy the service! God bless you!`);
+        this.reset();
+        document.getElementById('checkinDate').value = bccTodayLocal();
+      } catch(error) {
+        console.error('Check-in failed:',error);
+        feedback.textContent = 'Check-in NOT saved: ' + (error.message || error) + '. Please ask the admin to check Firebase access.';
+      } finally { btn.disabled = false; }
     });
-    document.getElementById('attendanceForm').addEventListener('submit', function(e) {
+    document.getElementById('attendanceForm').addEventListener('submit', async function(e) {
       e.preventDefault();
       const name = document.getElementById('fullName').value.trim();
       const email = document.getElementById('email').value.trim();
@@ -518,6 +551,8 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         feedback.textContent = 'This name already exists. Use Sunday Check-in instead, or ask admin to edit the existing record.';
         return;
       }
+      const submitButton = this.querySelector('[type=submit]');
+      if (submitButton?.disabled) return;
       const reminderConsent = document.getElementById('reminderConsent').checked;
       if(reminderConsent && !email) {
         feedback.textContent = 'Enter an email address if you want email reminders, or uncheck email consent.';
@@ -536,14 +571,31 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         birthday:document.getElementById('birthday').value,
         prayerRequest:document.getElementById('prayerRequest').value.trim(),
         reminderConsent,reminderEnabled:reminderConsent,
-        totalAttendance:0,lastAttended:'',notes:''
+        totalAttendance:1,lastAttended:bccTodayLocal(),notes:''
       };
-      db.push(person);
-      saveDB();
-      if(reminderConsent && email && typeof syncAttendeeToReminderBackend === 'function') syncAttendeeToReminderBackend(person);
-      this.reset();
-      feedback.textContent = `${name} created. Use Sunday Check-in to mark attendance.`;
-      refreshBCCNames();
+      if (!window.BCCStore?.upsert) {
+        feedback.textContent = 'Database is still connecting. Please wait and try again.';
+        return;
+      }
+      if (submitButton) submitButton.disabled = true;
+      feedback.textContent = 'Saving registration and first attendance…';
+      try {
+        await window.BCCStore.upsert(person);
+        if (!db.some(p => p.id === person.id)) db.push(person);
+        renderTable();
+        if(reminderConsent && email && typeof syncAttendeeToReminderBackend === 'function') {
+          Promise.resolve(syncAttendeeToReminderBackend(person)).catch(console.error);
+        }
+        this.reset();
+        feedback.textContent = `${name} registered successfully. First attendance recorded for ${person.lastAttended} (1 attendance).`;
+        bccSuccessPopup("Attendee Successfully Registered!", `Welcome, ${name}! Your record and first attendance have been saved. Enjoy the service!`);
+        refreshBCCNames();
+      } catch(error) {
+        console.error('BCC registration failed:', error);
+        feedback.textContent = 'Registration could not be saved. Please check your connection and try again. No attendance was recorded.';
+      } finally {
+        if (submitButton) submitButton.disabled = false;
+      }
     });
 
     function deleteRecord(id) {
@@ -729,16 +781,18 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
 
 
 <script type="module">
-import {startBCCData,getBCCRecords,upsertBCCRecord,removeBCCRecord} from "./firebase-data.js";
+import {startBCCData,getBCCRecords,upsertBCCRecord,removeBCCRecord,checkinBCCRecord} from "./firebase-data.js";
 window.BCCStore = {
   remove: removeBCCRecord,
+  upsert: upsertBCCRecord,
+  checkin: checkinBCCRecord,
   syncAll(records){ records.forEach(r=>upsertBCCRecord(r)); }
 };
 function refreshStatus(source){
   const el=document.querySelector(".offline-pill");
   if(!el)return;
   const online=navigator.onLine;
-  el.innerHTML=`<span class="offline-dot"></span>${online ? (source==="cloud"?"Firebase Synced":"Local check-in • online") : "Offline • Changes Saved"}`;
+  el.innerHTML=`<span class="offline-dot"></span>${online ? (source==="cloud"?"Firebase Synced":"Online • Syncing") : "Offline • Changes Saved"}`;
 }
 window.addEventListener("bcc-data",e=>{
   db=e.detail.records || [];
@@ -778,5 +832,6 @@ async function syncAttendeeToReminderBackend(attendee) {
 }
 </script>
 
+<script defer src="./update.js?v31"></script>
 </body>
 </html>

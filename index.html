@@ -199,8 +199,7 @@
             gap: 12px;
             flex-wrap: wrap;
         }
-    .bcc-suggestions{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:1000;max-height:184px;overflow-y:auto;background:#fff;border:1px solid #d9e2ee;border-radius:12px;box-shadow:0 12px 26px rgba(0,0,0,.12);margin-top:5px}.bcc-suggestions[hidden]{display:none!important}.bcc-suggestion{display:block;width:100%;text-align:left;background:#fff!important;color:#172334!important;border:0!important;border-bottom:1px solid #edf0f4!important;border-radius:0!important;padding:12px 14px!important;cursor:pointer}.bcc-suggestion:hover,.bcc-suggestion:focus{background:#eff6ff!important;outline:2px solid #bfdbfe;outline-offset:-2px}.bcc-suggestion-empty{padding:12px;color:#64748b}#quickCheckinForm .form-group:first-child{position:relative;min-width:0}#checkinSuggestions{box-sizing:border-box}#checkinSuggestions .bcc-suggestion{font-size:13px!important;padding:9px 12px!important;min-height:38px!important;line-height:1.35!important}#checkinSuggestions .bcc-suggestion:focus-visible{outline:2px solid #2563eb}
-</style>
+    </style>
 
 <style>
 :root{
@@ -275,7 +274,6 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
 
 <link rel="manifest" href="manifest.webmanifest">
 <script src="firebase-config.js"></script>
-<script type="module" src="./bcc-public.js?v36"></script>
 <style>
 .bcc-tabs{display:flex;gap:10px;margin:20px 0 12px;flex-wrap:wrap}
 .bcc-tab{background:#e9e2d8;color:#28231e;border:1px solid #ded2c3;padding:12px 18px;border-radius:12px}
@@ -309,9 +307,8 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
     <div class="card" id="checkinPanel">
       <h3>Sunday Check-in</h3>
       <p class="bcc-help">For existing attendees. Search and select a saved attendee to record today's attendance. No need to re-enter their personal information.</p>
-      <p id="bccLiveCount" role="status" aria-live="polite" style="font-size:13px;font-weight:650;margin:8px 0 12px">Today’s attendance: connecting…</p>
       <form id="quickCheckinForm" class="bcc-fields">
-        <div class="form-group"><label for="checkinPerson">Find attendee</label><input id="checkinPerson" placeholder="Start typing attendee name..." required autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="checkinSuggestions" aria-expanded="false"><div id="checkinSuggestions" class="bcc-suggestions" role="listbox" hidden></div></div>
+        <div class="form-group"><label for="checkinPerson">Find attendee</label><input id="checkinPerson" list="checkinNames" placeholder="Start typing attendee name..." required autocomplete="off"><datalist id="checkinNames"></datalist></div>
         <div class="form-group"><label for="checkinDate">Attendance date</label><input id="checkinDate" type="date" required></div>
         <button type="submit">Mark Present</button>
       </form>
@@ -470,10 +467,22 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         });
     }
 
+    function bccSuccessPopup(title, message) {
+      let overlay = document.getElementById('bccSuccessOverlay');
+      if (!overlay) {
+        overlay = document.createElement('div'); overlay.id='bccSuccessOverlay';
+        overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:18px';
+        overlay.innerHTML='<div role="dialog" aria-modal="true" style="max-width:420px;width:100%;background:white;color:#1c2432;border-radius:20px;padding:30px;text-align:center;box-shadow:0 20px 60px #0003"><div style="font-size:50px;color:#16a34a">✓</div><h2 id="bccSuccessTitle"></h2><p id="bccSuccessMessage"></p><button id="bccSuccessClose" type="button" style="padding:12px 30px;border:0;border-radius:12px;background:#245b48;color:white;cursor:pointer">Done</button></div>';
+        document.body.appendChild(overlay);
+        overlay.querySelector('#bccSuccessClose').addEventListener('click',()=>overlay.style.display='none');
+      }
+      overlay.querySelector('#bccSuccessTitle').textContent=title;
+      overlay.querySelector('#bccSuccessMessage').textContent=message;
+      overlay.style.display='flex';
+    }
     function bccTodayLocal() {
-      const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
-      const part=t=>parts.find(p=>p.type===t).value;
-      return `${part('year')}-${part('month')}-${part('day')}`;
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     }
     function switchBCCForm(view) {
       document.getElementById('checkinPanel').hidden = view !== 'checkin';
@@ -482,75 +491,54 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
       document.getElementById('createTab').classList.toggle('active', view === 'create');
       if(view === 'checkin') refreshBCCNames();
     }
-    let selectedCheckinId = null;
-    let publicMatches = [];
-    let searchSequence = 0;
-    let searchTimer;
     function refreshBCCNames() {
-      const input = document.getElementById('checkinPerson');
-      const list = document.getElementById('checkinSuggestions');
-      if (!input || !list) return;
-      const query = input.value.trim();
-      clearTimeout(searchTimer);
-      const seq = ++searchSequence;
+      const list = document.getElementById('checkinNames');
+      if (!list) return;
       list.replaceChildren();
-      if (!query || document.activeElement !== input) { list.hidden = true; input.setAttribute('aria-expanded','false'); return; }
-      searchTimer = setTimeout(async () => {
-        try {
-          const data = await window.BCCPublic.search(query);
-          if(seq !== searchSequence) return;
-          publicMatches = data.results || [];
-          list.replaceChildren();
-          for(const person of publicMatches){
-            const option=document.createElement('button');option.type='button';option.className='bcc-suggestion';option.setAttribute('role','option');
-            option.textContent=person.name+' · '+person.category;
-            option.addEventListener('mousedown',e=>e.preventDefault());
-            option.addEventListener('click',()=>{selectedCheckinId=person.id;input.value=person.name;list.hidden=true;input.setAttribute('aria-expanded','false');input.focus();});
-            list.appendChild(option);
-          }
-          if(!publicMatches.length){const empty=document.createElement('div');empty.className='bcc-suggestion-empty';empty.textContent='No matching attendee found';list.appendChild(empty);}
-          list.hidden=false;input.setAttribute('aria-expanded','true');
-        }catch(err){if(seq!==searchSequence)return;list.replaceChildren();const empty=document.createElement('div');empty.className='bcc-suggestion-empty';empty.textContent='Search unavailable: '+(err.code || err.message || 'Firebase connection error');list.appendChild(empty);list.hidden=false;}
-      },160);
+      db.forEach(person => {
+        const opt = document.createElement('option');
+        opt.value = person.name;
+        list.appendChild(opt);
+      });
     }
-    const checkinInput = document.getElementById('checkinPerson');
-    checkinInput.addEventListener('input', () => { selectedCheckinId = null; refreshBCCNames(); });
-    checkinInput.addEventListener('focus', refreshBCCNames);
-    checkinInput.addEventListener('keydown', e => {
-      const list = document.getElementById('checkinSuggestions');
-      if (e.key === 'Escape') { list.hidden = true; checkinInput.setAttribute('aria-expanded','false'); }
-      if (e.key === 'ArrowDown' && !list.hidden) { e.preventDefault(); list.querySelector('button')?.focus(); }
-    });
-    document.addEventListener('click', e => {
-      if (!e.target.closest('#checkinPerson, #checkinSuggestions')) {
-        document.getElementById('checkinSuggestions').hidden = true;
-        checkinInput.setAttribute('aria-expanded','false');
-      }
-    });
     document.getElementById('checkinDate').value = bccTodayLocal();
     document.getElementById('quickCheckinForm').addEventListener('submit', async function(e) {
       e.preventDefault();
       const name = document.getElementById('checkinPerson').value.trim();
       const date = document.getElementById('checkinDate').value;
       const feedback = document.getElementById('checkinFeedback');
-      const person = publicMatches.find(p=>p.id===selectedCheckinId && p.name===name);
-      if(!person){feedback.textContent='Please select an attendee from the dropdown.';return;}
-      if (!date) {feedback.textContent='Choose an attendance date.';return;}
+      const matches = db.filter(p => p.name.toLowerCase() === name.toLowerCase());
+      if(matches.length !== 1) {
+        feedback.textContent = matches.length ? 'Multiple records match this name. Please ask the admin to resolve duplicates.' : 'Attendee not found. Create an attendee record first.';
+        return;
+      }
+      if (!date) { feedback.textContent = 'Choose an attendance date.'; return; }
+      const person = matches[0];
+      if (person.lastAttended === date) {
+        feedback.textContent = 'Already checked in for this date. No duplicate attendance added.';
+        return;
+      }
+      if (!window.BCCStore?.checkin) {
+        feedback.textContent = 'Firebase is not ready. Please try again.';
+        return;
+      }
       const btn = this.querySelector('[type=submit]');
       if(btn.disabled) return;
       btn.disabled = true;
       feedback.textContent = 'Saving check-in to Firebase…';
       try {
-        await window.BCCPublic.checkin(person.id,date);
-        feedback.textContent = `${person.name}: attendance recorded for ${date}. Enjoy the service!`;
-        window.showBCCSuccess('Attendance Recorded!', `Welcome to Baptist City Church, ${person.name}! Your attendance has been recorded. Enjoy the service! God bless you!`);
-        window.refreshLiveAttendance?.();
-        selectedCheckinId=null;publicMatches=[];
+        await window.BCCStore.checkin(person.id, date);
+        person.totalAttendance = (Number(person.totalAttendance) || 0) + 1;
+        person.lastAttended = date;
+        localStorage.setItem('church_db', JSON.stringify(db));
+        renderTable();
+        feedback.textContent = `${person.name} checked in successfully for ${date}. Attendance saved.`;
+        bccSuccessPopup("Attendance Recorded!", `Welcome, ${person.name}! Enjoy the service! God bless you!`);
         this.reset();
         document.getElementById('checkinDate').value = bccTodayLocal();
       } catch(error) {
         console.error('Check-in failed:',error);
-        feedback.textContent = (error.code === 'permission-denied' || /permission/i.test(error.message || '')) ? 'Check-in not saved: Firebase access denied. An administrator must enable the secure check-in service; attendee data has not been changed.' : 'Check-in NOT saved: ' + (error.message || error);
+        feedback.textContent = 'Check-in NOT saved: ' + (error.message || error) + '. Please ask the admin to check Firebase access.';
       } finally { btn.disabled = false; }
     });
     document.getElementById('attendanceForm').addEventListener('submit', async function(e) {
@@ -585,21 +573,26 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         reminderConsent,reminderEnabled:reminderConsent,
         totalAttendance:1,lastAttended:bccTodayLocal(),notes:''
       };
+      if (!window.BCCStore?.upsert) {
+        feedback.textContent = 'Database is still connecting. Please wait and try again.';
+        return;
+      }
       if (submitButton) submitButton.disabled = true;
       feedback.textContent = 'Saving registration and first attendance…';
       try {
-        await window.BCCPublic.register(person);
-        window.refreshLiveAttendance?.();
+        await window.BCCStore.upsert(person);
+        if (!db.some(p => p.id === person.id)) db.push(person);
+        renderTable();
         if(reminderConsent && email && typeof syncAttendeeToReminderBackend === 'function') {
           Promise.resolve(syncAttendeeToReminderBackend(person)).catch(console.error);
         }
         this.reset();
         feedback.textContent = `${name} registered successfully. First attendance recorded for ${person.lastAttended} (1 attendance).`;
-        window.showBCCSuccess('Attendee Successfully Registered!', `Welcome to Baptist City Church, ${name}! Your attendee record and first attendance have been saved. Enjoy the service! God bless you!`);
+        bccSuccessPopup("Attendee Successfully Registered!", `Welcome, ${name}! Your record and first attendance have been saved. Enjoy the service!`);
         refreshBCCNames();
       } catch(error) {
         console.error('BCC registration failed:', error);
-        feedback.textContent = 'Registration NOT saved: ' + (error.message || 'Please check the secure server connection.');
+        feedback.textContent = 'Registration could not be saved. Please check your connection and try again. No attendance was recorded.';
       } finally {
         if (submitButton) submitButton.disabled = false;
       }
@@ -793,7 +786,7 @@ window.BCCStore = {
   remove: removeBCCRecord,
   upsert: upsertBCCRecord,
   checkin: checkinBCCRecord,
-  syncAll(records){ console.warn("Public page cannot bulk-update private attendee records."); }
+  syncAll(records){ records.forEach(r=>upsertBCCRecord(r)); }
 };
 function refreshStatus(source){
   const el=document.querySelector(".offline-pill");
@@ -803,29 +796,10 @@ function refreshStatus(source){
 }
 window.addEventListener("bcc-data",e=>{
   db=e.detail.records || [];
-  renderTable(); refreshBCCNames(); refreshStatus(e.detail.source);
+  renderTable(); refreshStatus(e.detail.source);
 });
 window.addEventListener("bcc-network",()=>refreshStatus("cache"));
-// Server-authoritative public total; no private member fields exposed.
-let lastLiveTotal = null;
-async function refreshLiveAttendance(){
-  const el=document.getElementById('bccLiveCount');
-  if(!el || document.hidden || !navigator.onLine) return;
-  try {
-    const data=await window.BCCPublic.todayTotal();
-    if(!Number.isInteger(data.total)) throw new Error('Invalid total');
-    lastLiveTotal=data.total;
-    el.textContent=`Today's attendance: ${data.total} present · Live sync`;
-  } catch {
-    el.textContent=lastLiveTotal===null?'Today’s attendance: waiting for Firebase sync':`Today's attendance: ${lastLiveTotal} · Reconnecting…`;
-  }
-}
-window.refreshLiveAttendance = refreshLiveAttendance;
-refreshLiveAttendance();
-setInterval(refreshLiveAttendance,10000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshLiveAttendance();});
-window.addEventListener('focus',refreshLiveAttendance);
-// Public pages must not query private members collection.
+await startBCCData();
 refreshStatus("cache");
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(console.error);
 </script>
@@ -859,14 +833,5 @@ async function syncAttendeeToReminderBackend(attendee) {
 </script>
 
 <script defer src="./update.js?v31"></script>
-
-<style>
-#bccSuccessOverlay[hidden]{display:none!important}#bccSuccessOverlay{position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}.bcc-success-dialog{width:min(100%,420px);box-sizing:border-box;border-radius:22px;background:#fff;padding:30px 26px;text-align:center;box-shadow:0 25px 70px rgba(0,0,0,.2);animation:bccPop .22s ease-out}.bcc-success-symbol{margin:auto auto 12px;width:64px;height:64px;border-radius:50%;background:#dcfce7;color:#15803d;display:grid;place-items:center;font-size:36px;font-weight:bold}.bcc-success-dialog h3{margin:8px 0;font-size:21px;color:#0f172a}.bcc-success-dialog p{color:#475569;line-height:1.55;overflow-wrap:anywhere}.bcc-success-dialog button{width:100%;margin-top:15px;background:#151515;color:white;padding:13px;border:0;border-radius:11px;cursor:pointer}@keyframes bccPop{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
-</style>
-<div id="bccSuccessOverlay" hidden role="presentation"><div class="bcc-success-dialog" role="dialog" aria-modal="true" aria-labelledby="bccSuccessTitle" aria-describedby="bccSuccessMessage"><div class="bcc-success-symbol" aria-hidden="true">✓</div><h3 id="bccSuccessTitle"></h3><p id="bccSuccessMessage"></p><button type="button" id="bccSuccessClose">Done</button></div></div>
-<script>
-(function(){const overlay=document.getElementById('bccSuccessOverlay');const close=document.getElementById('bccSuccessClose');let lastFocus=null;window.showBCCSuccess=function(title,message){lastFocus=document.activeElement;document.getElementById('bccSuccessTitle').textContent=title;document.getElementById('bccSuccessMessage').textContent=message;overlay.hidden=false;close.focus()};function dismiss(){overlay.hidden=true;if(lastFocus&&lastFocus.focus)lastFocus.focus()}close.addEventListener('click',dismiss);overlay.addEventListener('click',e=>{if(e.target===overlay)dismiss()});document.addEventListener('keydown',e=>{if(!overlay.hidden&&e.key==='Escape')dismiss()})})();
-</script>
-
 </body>
 </html>
