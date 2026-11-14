@@ -22,7 +22,16 @@ function localRead(){
   try { return JSON.parse(localStorage.getItem("church_db") || "[]"); } catch { return []; }
 }
 function localWrite(records){
-  localStorage.setItem("church_db", JSON.stringify(records));
+  // Never destroy the last known populated backup with an empty or failed read.
+  if (!Array.isArray(records) || records.length === 0) return;
+  const previous = localRead();
+  try {
+    if (previous.length > 0) {
+      const key = "bcc_backup_" + new Date().toISOString().slice(0,10);
+      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(previous));
+    }
+    localStorage.setItem("church_db", JSON.stringify(records));
+  } catch (error) { console.warn("BCC local backup unavailable:", error); }
 }
 export function isFirebaseConfigured(){ return configured; }
 
@@ -62,7 +71,15 @@ export async function startBCCData(){
   }
 
   unsubscribe = onSnapshot(collection(db,"members"), {includeMetadataChanges:true}, snap => {
-    latest = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    const cloudRecords = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    // An empty snapshot must not silently erase or replace a populated local backup.
+    if (cloudRecords.length === 0 && localRead().length > 0) {
+      latest = localRead(); source = "recovery-local";
+      window.dispatchEvent(new CustomEvent("bcc-firestore-error", {detail:{code:"empty-cloud",message:"No member records were returned. Displaying preserved local backup; cloud records need verification."}}));
+      emit();
+      return;
+    }
+    latest = cloudRecords;
     source = snap.metadata.fromCache ? "cache" : "cloud";
     localWrite(latest); // compatibility backup for existing UI + emergency fallback
     emit();
