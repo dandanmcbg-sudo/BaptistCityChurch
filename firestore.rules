@@ -40,8 +40,9 @@ service cloud.firestore {
     && exists(/databases/$(database)/documents/publicAttendees/$(request.resource.data.memberId))
     && request.resource.data.requestedBy == request.auth.uid
     && request.resource.data.createdAt == request.time
-    && request.resource.data.status == 'pending';
-   allow read,update,delete: if isAdmin();
+    && request.resource.data.status == 'confirmed';
+   allow read: if signedIn();
+   allow update,delete: if isAdmin();
   }
   match /publicStats/{id}{allow read: if signedIn();allow write: if isAdmin();}
   match /churchEvents/{id}{allow read,write: if isAdmin();}

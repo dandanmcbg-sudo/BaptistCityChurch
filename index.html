@@ -542,8 +542,8 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
       feedback.textContent = 'Saving check-in to Firebase…';
       try {
         await window.BCCPublic.checkin(person.id,date);
-        feedback.textContent = `${person.name}: check-in request submitted for ${date}. Awaiting admin confirmation.`;
-        window.showBCCSuccess('Check-in Request Submitted', `${person.name} submitted a check-in request for ${date}. Attendance will be confirmed by the administrator.`);
+        feedback.textContent = `${person.name}: attendance recorded for ${date}. Enjoy the service!`;
+        window.showBCCSuccess('Attendance Recorded!', `Welcome to Baptist City Church, ${person.name}! Your attendance has been recorded. Enjoy the service! God bless you!`);
         window.refreshLiveAttendance?.();
         selectedCheckinId=null;publicMatches=[];
         this.reset();
@@ -595,7 +595,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         }
         this.reset();
         feedback.textContent = `${name} registered successfully. First attendance recorded for ${person.lastAttended} (1 attendance).`;
-        window.showBCCSuccess('Attendee Record Created Successfully!', `${name} (${person.category}) has been saved. First attendance recorded for ${person.lastAttended}.`);
+        window.showBCCSuccess('Attendee Successfully Registered!', `Welcome to Baptist City Church, ${name}! Your attendee record and first attendance have been saved. Enjoy the service! God bless you!`);
         refreshBCCNames();
       } catch(error) {
         console.error('BCC registration failed:', error);

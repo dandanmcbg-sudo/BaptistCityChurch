@@ -223,23 +223,16 @@ document.getElementById('bccSyncDirectory').addEventListener('click',async()=>{
 let unsubscribePending;
 function startPending(){if(unsubscribePending)return;
  unsubscribePending=onSnapshot(collection(publicDb,'attendanceCheckins'),snap=>{
-  const pending=snap.docs.filter(d=>d.data().status==='pending');
+  const confirmed=snap.docs.filter(d=>d.data().status==='confirmed');
   const box=document.getElementById('bccPendingRequests');box.replaceChildren();
-  const header=document.createElement('strong');header.textContent=`Pending check-in requests (${pending.length})`;box.appendChild(header);
-  pending.slice(0,40).forEach(item=>{
+  const header=document.createElement('strong');header.textContent=`Automatically recorded check-ins (${confirmed.length})`;box.appendChild(header);
+  const list=document.createElement('div');list.style.maxHeight='260px';list.style.overflow='auto';
+  confirmed.sort((a,b)=>String(b.data().date).localeCompare(String(a.data().date))).slice(0,80).forEach(item=>{
    const d=item.data(),line=document.createElement('div');line.style.margin='8px 0';
-   const name=db.find(p=>p.id===d.memberId)?.name||d.memberId;
-   const text=document.createElement('span');text.textContent=`${name} — ${d.date} `;line.appendChild(text);
-   const approve=document.createElement('button');approve.textContent='Approve';approve.type='button';
-   approve.onclick=async()=>{approve.disabled=true;try{
-    const member=db.find(p=>p.id===d.memberId);if(!member)throw Error('Member not found');
-    if(member.lastAttended===d.date)throw Error('Already marked for this date');
-    await updateDoc(doc(publicDb,'members',d.memberId),{totalAttendance:increment(1),lastAttended:d.date});
-    await updateDoc(doc(publicDb,'attendanceCheckins',item.id),{status:'approved',approvedAt:serverTimestamp()});
-   }catch(e){alert('Approval not completed: '+e.message);}finally{approve.disabled=false;}};
-   line.appendChild(approve);box.appendChild(line);
-  });
- },e=>{document.getElementById('bccPendingRequests').textContent='Pending check-ins unavailable: '+e.message;});
+   line.textContent=`${db.find(p=>p.id===d.memberId)?.name||d.memberId} — ${d.date} • Present`;
+   list.appendChild(line);
+  });box.appendChild(list);
+ },e=>{document.getElementById('bccPendingRequests').textContent='Live check-ins unavailable: '+e.message;});
 }
 
 window.BCCStore={
