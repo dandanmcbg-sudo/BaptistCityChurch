@@ -545,6 +545,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         const result = await response.json();
         if(!response.ok) throw new Error(result.error || 'Unable to save check-in');
         feedback.textContent = `${person.name} checked in successfully for ${date}. Attendance saved.`;
+        window.showBCCSuccess('Attendance Recorded Successfully!', `${person.name} is marked present for ${date}. Attendance saved to Firebase.`);
         refreshLiveAttendance();
         selectedCheckinId=null;publicMatches=[];
         this.reset();
@@ -601,6 +602,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         }
         this.reset();
         feedback.textContent = `${name} registered successfully. First attendance recorded for ${person.lastAttended} (1 attendance).`;
+        window.showBCCSuccess('Attendee Record Created Successfully!', `${name} (${person.category}) has been saved. First attendance recorded for ${person.lastAttended}.`);
         refreshBCCNames();
       } catch(error) {
         console.error('BCC registration failed:', error);
@@ -865,5 +867,14 @@ async function syncAttendeeToReminderBackend(attendee) {
 </script>
 
 <script defer src="./update.js?v31"></script>
+
+<style>
+#bccSuccessOverlay[hidden]{display:none!important}#bccSuccessOverlay{position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}.bcc-success-dialog{width:min(100%,420px);box-sizing:border-box;border-radius:22px;background:#fff;padding:30px 26px;text-align:center;box-shadow:0 25px 70px rgba(0,0,0,.2);animation:bccPop .22s ease-out}.bcc-success-symbol{margin:auto auto 12px;width:64px;height:64px;border-radius:50%;background:#dcfce7;color:#15803d;display:grid;place-items:center;font-size:36px;font-weight:bold}.bcc-success-dialog h3{margin:8px 0;font-size:21px;color:#0f172a}.bcc-success-dialog p{color:#475569;line-height:1.55;overflow-wrap:anywhere}.bcc-success-dialog button{width:100%;margin-top:15px;background:#151515;color:white;padding:13px;border:0;border-radius:11px;cursor:pointer}@keyframes bccPop{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+</style>
+<div id="bccSuccessOverlay" hidden role="presentation"><div class="bcc-success-dialog" role="dialog" aria-modal="true" aria-labelledby="bccSuccessTitle" aria-describedby="bccSuccessMessage"><div class="bcc-success-symbol" aria-hidden="true">✓</div><h3 id="bccSuccessTitle"></h3><p id="bccSuccessMessage"></p><button type="button" id="bccSuccessClose">Done</button></div></div>
+<script>
+(function(){const overlay=document.getElementById('bccSuccessOverlay');const close=document.getElementById('bccSuccessClose');let lastFocus=null;window.showBCCSuccess=function(title,message){lastFocus=document.activeElement;document.getElementById('bccSuccessTitle').textContent=title;document.getElementById('bccSuccessMessage').textContent=message;overlay.hidden=false;close.focus()};function dismiss(){overlay.hidden=true;if(lastFocus&&lastFocus.focus)lastFocus.focus()}close.addEventListener('click',dismiss);overlay.addEventListener('click',e=>{if(e.target===overlay)dismiss()});document.addEventListener('keydown',e=>{if(!overlay.hidden&&e.key==='Escape')dismiss()})})();
+</script>
+
 </body>
 </html>
