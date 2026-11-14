@@ -470,8 +470,9 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
     }
 
     function bccTodayLocal() {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+      const part=t=>parts.find(p=>p.type===t).value;
+      return `${part('year')}-${part('month')}-${part('day')}`;
     }
     function switchBCCForm(view) {
       document.getElementById('checkinPanel').hidden = view !== 'checkin';
@@ -546,7 +547,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         if(!response.ok) throw new Error(result.error || 'Unable to save check-in');
         feedback.textContent = `${person.name} checked in successfully for ${date}. Attendance saved.`;
         window.showBCCSuccess('Attendance Recorded Successfully!', `${person.name} is marked present for ${date}. Attendance saved to Firebase.`);
-        refreshLiveAttendance();
+        window.refreshLiveAttendance?.();
         selectedCheckinId=null;publicMatches=[];
         this.reset();
         document.getElementById('checkinDate').value = bccTodayLocal();
@@ -587,16 +588,13 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         reminderConsent,reminderEnabled:reminderConsent,
         totalAttendance:1,lastAttended:bccTodayLocal(),notes:''
       };
-      if (!window.BCCStore?.upsert) {
-        feedback.textContent = 'Database is still connecting. Please wait and try again.';
-        return;
-      }
       if (submitButton) submitButton.disabled = true;
       feedback.textContent = 'Saving registration and first attendance…';
       try {
-        await window.BCCStore.upsert(person);
-        if (!db.some(p => p.id === person.id)) db.push(person);
-        renderTable();
+        const response = await fetch('/api/register', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(person)});
+        const saved = await response.json().catch(()=>({}));
+        if(!response.ok) throw new Error(saved.error || `Registration unavailable (${response.status})`);
+        window.refreshLiveAttendance?.();
         if(reminderConsent && email && typeof syncAttendeeToReminderBackend === 'function') {
           Promise.resolve(syncAttendeeToReminderBackend(person)).catch(console.error);
         }
@@ -606,7 +604,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         refreshBCCNames();
       } catch(error) {
         console.error('BCC registration failed:', error);
-        feedback.textContent = 'Registration could not be saved. Please check your connection and try again. No attendance was recorded.';
+        feedback.textContent = 'Registration NOT saved: ' + (error.message || 'Please check the secure server connection.');
       } finally {
         if (submitButton) submitButton.disabled = false;
       }
@@ -800,7 +798,7 @@ window.BCCStore = {
   remove: removeBCCRecord,
   upsert: upsertBCCRecord,
   checkin: checkinBCCRecord,
-  syncAll(records){ records.forEach(r=>upsertBCCRecord(r)); }
+  syncAll(records){ console.warn("Public page cannot bulk-update private attendee records."); }
 };
 function refreshStatus(source){
   const el=document.querySelector(".offline-pill");
@@ -826,9 +824,10 @@ async function refreshLiveAttendance(){
     lastLiveTotal=data.total;
     el.textContent=`Today's attendance: ${data.total} present · Live sync`;
   } catch {
-    el.textContent=lastLiveTotal===null?'Today’s attendance: waiting for secure connection':`Today's attendance: ${lastLiveTotal} · Reconnecting…`;
+    el.textContent=lastLiveTotal===null?'Today’s attendance: backend unavailable — check Cloudflare deployment':`Today's attendance: ${lastLiveTotal} · Reconnecting…`;
   }
 }
+window.refreshLiveAttendance = refreshLiveAttendance;
 refreshLiveAttendance();
 setInterval(refreshLiveAttendance,10000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshLiveAttendance();});

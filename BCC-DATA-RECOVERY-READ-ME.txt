@@ -1,0 +1,11 @@
+BCC DATA PROTECTION / RECOVERY
+
+This is a protective patch, not a confirmed data recovery.
+
+1. Before deploying, open Firebase Console > Firestore Database > Data and inspect the existing members collection in the correct Firebase project. Do not delete or recreate it.
+2. Back up Firestore data before any deployment.
+3. On each browser that previously displayed attendees, do NOT clear browser data or localStorage. The key church_db may contain an older copy.
+4. This patch prevents an empty Firestore snapshot from overwriting a populated localStorage backup. It displays locally backed-up data with source recovery-local, not as cloud-synced records.
+5. Existing public Firestore read restrictions can still block direct members reads. The /api/attendees backend requires configured Cloudflare secrets and successful deployment.
+6. Do not assume the displayed backup is synchronized; do not perform mass imports until IDs and records have been compared to Firestore.
+7. The previous direct Firestore Mark Present update still needs a secure backend and deployment.
