@@ -1,7 +1,7 @@
 
 import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 import {
-  initializeFirestore, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
+  getFirestore,
   collection, doc, setDoc, deleteDoc, onSnapshot, getDocs,
   serverTimestamp, runTransaction, updateDoc, increment
 } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
@@ -43,15 +43,10 @@ export async function startBCCData(){
   }
 
   const app = getApps().length ? getApp() : initializeApp(cfg);
-  // The Invitation Center only reads recipients. Using memory cache here avoids
-  // IndexedDB primary-lease contention with other open attendance/admin tabs.
-  // Keep persistent offline caching unchanged on the main and admin pages.
-  const invitationPage = /(?:^|\/)invitation\.html$/.test(location.pathname);
-  db = initializeFirestore(app, {
-    localCache: invitationPage
-      ? memoryLocalCache()
-      : persistentLocalCache({tabManager: persistentMultipleTabManager()})
-  });
+  // Reuse the Firestore instance initialized by the other page modules.
+  // Calling initializeFirestore() after getFirestore() causes failed-precondition
+  // and prevents the admin's existing member records from loading.
+  db = getFirestore(app);
 
   // Automatic local-to-cloud migration disabled: requires explicit admin review to avoid overwriting live records.
 

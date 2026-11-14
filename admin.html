@@ -274,6 +274,13 @@ async function bccBackfillFirstAttendance(records, source){
  } finally {bccBackfillRunning = false;}
 }
 window.addEventListener("bcc-data",e=>{db=e.detail.records||[];render();addSyncBadge(e.detail.source);/* automatic historical backfill disabled to protect attendance history */});
+window.addEventListener("bcc-firestore-error",e=>{
+ const details=e.detail||{};
+ let banner=document.getElementById('bccConnectionError');
+ if(!banner){banner=document.createElement('div');banner.id='bccConnectionError';banner.setAttribute('role','alert');banner.style.cssText='margin:12px 20px;padding:14px;border:1px solid #b45309;background:#fff7ed;border-radius:10px;color:#78350f;white-space:pre-wrap';document.querySelector('main')?.prepend(banner);}
+ banner.textContent='Firebase records could not be loaded ('+(details.code||'unknown')+'). Existing data has NOT been deleted. '+(details.message||'Check the signed-in admin account and Firestore rules.');
+});
+window.addEventListener("bcc-data",e=>{if(e.detail?.source==='cloud'){document.getElementById('bccConnectionError')?.remove();}});
 window.addEventListener("bcc-network",()=>addSyncBadge("cache"));
 window.BCCStartAdminData = async () => { await startBCCData(); addSyncBadge("cache"); syncSection.hidden=false; startPending(); };
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(console.error);
