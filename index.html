@@ -308,6 +308,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
     <div class="card" id="checkinPanel">
       <h3>Sunday Check-in</h3>
       <p class="bcc-help">For existing attendees. Search and select a saved attendee to record today's attendance. No need to re-enter their personal information.</p>
+      <p id="bccLiveCount" role="status" aria-live="polite" style="font-size:13px;font-weight:650;margin:8px 0 12px">Today’s attendance: connecting…</p>
       <form id="quickCheckinForm" class="bcc-fields">
         <div class="form-group"><label for="checkinPerson">Find attendee</label><input id="checkinPerson" placeholder="Start typing attendee name..." required autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="checkinSuggestions" aria-expanded="false"><div id="checkinSuggestions" class="bcc-suggestions" role="listbox" hidden></div></div>
         <div class="form-group"><label for="checkinDate">Attendance date</label><input id="checkinDate" type="date" required></div>
@@ -544,6 +545,7 @@ input:focus,select:focus,textarea:focus{border-color:#8b7355;box-shadow:0 0 0 3p
         const result = await response.json();
         if(!response.ok) throw new Error(result.error || 'Unable to save check-in');
         feedback.textContent = `${person.name} checked in successfully for ${date}. Attendance saved.`;
+        refreshLiveAttendance();
         selectedCheckinId=null;publicMatches=[];
         this.reset();
         document.getElementById('checkinDate').value = bccTodayLocal();
@@ -809,6 +811,26 @@ window.addEventListener("bcc-data",e=>{
   renderTable(); refreshBCCNames(); refreshStatus(e.detail.source);
 });
 window.addEventListener("bcc-network",()=>refreshStatus("cache"));
+// Server-authoritative public total; no private member fields exposed.
+let lastLiveTotal = null;
+async function refreshLiveAttendance(){
+  const el=document.getElementById('bccLiveCount');
+  if(!el || document.hidden || !navigator.onLine) return;
+  try {
+    const res=await fetch('/api/live-attendance',{cache:'no-store'});
+    if(!res.ok) throw new Error('Unavailable');
+    const data=await res.json();
+    if(!Number.isInteger(data.total)) throw new Error('Invalid total');
+    lastLiveTotal=data.total;
+    el.textContent=`Today's attendance: ${data.total} present · Live sync`;
+  } catch {
+    el.textContent=lastLiveTotal===null?'Today’s attendance: waiting for secure connection':`Today's attendance: ${lastLiveTotal} · Reconnecting…`;
+  }
+}
+refreshLiveAttendance();
+setInterval(refreshLiveAttendance,10000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshLiveAttendance();});
+window.addEventListener('focus',refreshLiveAttendance);
 // Public pages must not query private members collection.
 refreshStatus("cache");
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(console.error);
