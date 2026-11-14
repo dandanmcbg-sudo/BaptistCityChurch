@@ -1,0 +1,1 @@
+v9 Full-screen Church Planner on separate Admin sidebar tab. Month/week/day views, click-to-create, edit, drag-to-reschedule, Firebase churchEvents persistence, Invitation Center integration. Upload all website files. No live deployment performed.

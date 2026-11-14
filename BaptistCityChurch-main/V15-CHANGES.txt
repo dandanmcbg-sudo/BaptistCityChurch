@@ -1,0 +1,1 @@
+v15: unified Dashboard/Planner/Invitation brand and responsive sidebar; removed Email Automation from admin navigation only (backend retained). Planner save navigates to event date and highlights it. No Firebase records deleted. Live browser/Firebase testing still required.

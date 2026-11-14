@@ -1,0 +1,15 @@
+Baptist City Church — v4 Saturday Automatic Invitation Center
+
+1. In the EXISTING Apps Script project, replace Code.gs with apps-script/Code.gs.
+2. In Apps Script project settings, set time zone to Asia/Manila.
+3. Run setupBCCSheets() once if not already configured. Do NOT create a second sheet.
+4. Ensure Firebase attendees have synced into Google Sheets Attendees with Email Consent TRUE and Reminder Enabled TRUE. The scheduled script cannot read unsynced Firebase attendees.
+5. Verify the church's actual Sunday service time; edit BCC_AUTO_INVITATION.eventTime (currently 09:00).
+6. Run setupSaturdayInvitationTrigger() ONCE and authorize permissions.
+7. In Apps Script > Triggers verify sendSaturdayInvitation every Saturday around 8 AM Asia/Manila.
+8. Apps Script clock triggers run approximately at the chosen time, not necessarily exactly 8:00:00.
+9. Manual Send Invitation to Selected remains separate and unchanged.
+10. Do not run sendSaturdayInvitation for a live test: it sends real emails if today is Saturday. Test in a safe duplicate project with consenting test records.
+
+Email recipients are taken from the consented Google Sheets Attendees rows, not all Firebase members.
+Delivery accepted by MailApp does not guarantee arrival in inbox.

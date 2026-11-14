@@ -53,17 +53,7 @@ export async function startBCCData(){
       : persistentLocalCache({tabManager: persistentMultipleTabManager()})
   });
 
-  // One-time migration of existing localStorage records into Firestore.
-  const migrationKey = "bcc_firebase_migration_v1";
-  if (document.body.classList.contains("admin-authorized") && !localStorage.getItem(migrationKey)) {
-    const old = localRead();
-    old.forEach(r => {
-      if (!r.id) r.id = "id_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
-      setDoc(doc(db,"members",r.id), {...r, updatedAt:serverTimestamp()}, {merge:true})
-        .catch(console.error);
-    });
-    localStorage.setItem(migrationKey, "queued");
-  }
+  // Automatic local-to-cloud migration disabled: requires explicit admin review to avoid overwriting live records.
 
   unsubscribe = onSnapshot(collection(db,"members"), {includeMetadataChanges:true}, snap => {
     const cloudRecords = snap.docs.map(d => ({id:d.id, ...d.data()}));

@@ -1,0 +1,9 @@
+{
+  "version": "v31",
+  "title": "Baptist City Church \u2014 Website Updated",
+  "changes": [
+    "Improved admin session restoration after refresh; saved Firebase login is checked before showing the sign-in form.",
+    "Update notification and What\u2019s New appear after new deployments.",
+    "Existing attendance, registration, invitation and church features retained."
+  ]
+}
